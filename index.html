@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Life Log — 日記の入口</title>
+<meta name="description" content="話す・撮る・書く。Claude があなたの日記リポジトリの規約で Markdown にして、GitHub にコミットします。鍵もデータもあなたの端末とリポジトリにだけ。">
+<meta name="theme-color" content="#f6f2ea">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Life Log">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>Life Log</h1>
+  <div class="top-right">
+    <span id="streak" class="streak" title="連続記録日数"></span>
+    <button id="btn-settings" class="icon" aria-label="設定">⚙</button>
+  </div>
+</header>
+
+<main>
+  <!-- 入力 -->
+  <section id="view-capture" class="view">
+    <div class="field">
+      <label for="date">日付</label>
+      <input type="date" id="date">
+    </div>
+    <div class="field">
+      <label for="text">今日あったこと</label>
+      <textarea id="text" rows="7" placeholder="話すか、書く。例: 午前は山田さんと打ち合わせ。昼はサイゼで 980 円。夜は自炊でカレー。充実度 80。"></textarea>
+      <div class="row">
+        <button id="btn-mic" class="mic" type="button">🎙 話す</button>
+        <span id="mic-status" class="small"></span>
+      </div>
+    </div>
+    <div class="field">
+      <label>写真・レシート</label>
+      <div class="row">
+        <label class="file-btn">📷 撮る<input type="file" id="file-camera" accept="image/*" capture="environment" multiple hidden></label>
+        <label class="file-btn">🖼 選ぶ<input type="file" id="file-pick" accept="image/*" multiple hidden></label>
+      </div>
+      <div id="thumbs" class="thumbs"></div>
+    </div>
+    <div class="field">
+      <label for="fulfill">充実度 <span id="fulfill-val">—</span></label>
+      <input type="range" id="fulfill" min="0" max="100" value="70" step="5">
+      <label class="check"><input type="checkbox" id="fulfill-skip"> 今日は付けない</label>
+    </div>
+    <button id="btn-compose" class="primary big">Claude で日記にする</button>
+    <p id="compose-status" class="small"></p>
+  </section>
+
+  <!-- 確認 -->
+  <section id="view-review" class="view hidden">
+    <div class="review-head">
+      <b id="review-path">diary/2026/2026-10-02.md</b>
+      <span id="review-merge" class="tag hidden">同日の既存ファイルに統合</span>
+    </div>
+    <div id="review-questions" class="questions hidden"></div>
+    <textarea id="review-md" rows="18" spellcheck="false"></textarea>
+    <div id="review-entities" class="entities"></div>
+    <div class="row">
+      <button id="btn-back">← 直す</button>
+      <button id="btn-download">.md を保存</button>
+      <button id="btn-commit" class="primary">GitHub にコミット</button>
+    </div>
+    <p id="commit-status" class="small"></p>
+  </section>
+
+  <!-- 完了 -->
+  <section id="view-done" class="view hidden">
+    <h2>記録しました</h2>
+    <p id="done-summary"></p>
+    <p class="small">統計（人物・店・支出）の更新は、リポジトリ側の Claude Code で <code>/diary-ingest</code> を実行してください（このアプリは入口だけを担当します）。</p>
+    <button id="btn-again" class="primary">続けて書く</button>
+  </section>
+</main>
+
+<footer>
+  <p><b>Life Log</b> は <a href="https://github.com/vellumlabs" rel="noopener">Vellum Labs</a>（LLM が運営する小さなスタジオ）が作っています。サーバはありません。API キーと GitHub トークンはこの端末の localStorage にだけ保存され、通信先は Anthropic と GitHub だけです。コードは Claude Code（AI）で書きました。</p>
+</footer>
+
+<dialog id="dlg-settings">
+  <h2>設定</h2>
+  <form method="dialog" id="form-settings">
+    <h3>Claude</h3>
+    <label>API キー <input type="password" id="s-key" autocomplete="off" placeholder="sk-ant-…"></label>
+    <label>モデル
+      <select id="s-model">
+        <option value="claude-opus-5-5">claude-opus-5-5（既定・精度重視）</option>
+        <option value="claude-sonnet-5-5">claude-sonnet-5-5（速い・安い）</option>
+        <option value="claude-haiku-4-5">claude-haiku-4-5（最安）</option>
+      </select>
+    </label>
+    <h3>GitHub（任意。無ければ .md を端末に保存）</h3>
+    <label>リポジトリ <input type="text" id="s-repo" placeholder="owner/ai-diary"></label>
+    <label>ブランチ <input type="text" id="s-branch" placeholder="main"></label>
+    <label>Personal Access Token（contents: write） <input type="password" id="s-gh" autocomplete="off" placeholder="github_pat_…"></label>
+    <h3>日記の規約</h3>
+    <label>追加の指示（任意） <textarea id="s-rules" rows="3" placeholder="例: 猫の名前は『みけ』。会社名は書かない。"></textarea></label>
+    <p class="small">規約の本体（常体・簡潔、充実度、支出テーブル、エンティティへの相対リンク）はアプリに組み込み済みです。リポジトリの <code>stats/*/index.md</code> から既存の人物・店・場所などの名前を読み取り、同じ名前にリンクします。</p>
+    <div class="row">
+      <button type="button" id="btn-test-gh">GitHub 接続を確認</button>
+      <button class="primary" value="ok">保存</button>
+    </div>
+    <p id="settings-status" class="small"></p>
+  </form>
+</dialog>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
