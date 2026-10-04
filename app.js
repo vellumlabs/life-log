@@ -13,6 +13,36 @@ const MOCK = new URLSearchParams(location.search).has('mock');
 let images = []; // {name, dataUrl, b64, mime}
 let draft = null; // {date, markdown, meta, path, sha, imageFiles:[{path,b64}]}
 
+// ---------- draft persistence (IndexedDB: images can exceed the localStorage quota) ----------
+// The capture form and the Claude result survive closing the app; cleared only after save/commit or 消す.
+const idb = (mode, fn) => new Promise((res, rej) => {
+  const o = indexedDB.open('life-log', 1);
+  o.onupgradeneeded = () => o.result.createObjectStore('kv');
+  o.onerror = () => rej(o.error);
+  o.onsuccess = () => { const tx = o.result.transaction('kv', mode); const r = fn(tx.objectStore('kv')); tx.oncomplete = () => res(r?.result); tx.onerror = () => rej(tx.error); };
+});
+let persistTimer = 0;
+function persist() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    const d = { date: $('#date').value, text: $('#text').value, fulfill: $('#fulfill').value, skip: $('#fulfill-skip').checked, images, review: draft && { ...draft, markdown: $('#view-review').classList.contains('hidden') ? draft.markdown : $('#review-md').value }, at: Date.now() };
+    const empty = !d.text.trim() && !images.length && !draft;
+    idb('readwrite', (st) => (empty ? st.delete('draft') : st.put(d, 'draft'))).catch(() => {});
+    $('#btn-discard').classList.toggle('hidden', empty);
+  }, 300);
+}
+async function restore() {
+  let d; try { d = await idb('readonly', (st) => st.get('draft')); } catch { return; }
+  if (!d) return;
+  $('#date').value = d.date || todayKey(); $('#text').value = d.text || ''; $('#fulfill').value = d.fulfill ?? 70; $('#fulfill-skip').checked = !!d.skip; fulfillUI();
+  images = d.images || []; renderThumbs();
+  const when = new Date(d.at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  if (d.review) { draft = d.review; showReview(); $('#commit-status').textContent = `${when} の確認待ちを復元しました。` + $('#commit-status').textContent; }
+  else $('#compose-status').textContent = `${when} の下書きを復元しました${images.length ? `（写真 ${images.length} 枚）` : ''}`;
+  $('#btn-discard').classList.remove('hidden');
+}
+function clearDraft() { clearTimeout(persistTimer); idb('readwrite', (st) => st.delete('draft')).catch(() => {}); $('#btn-discard').classList.add('hidden'); }
+
 // ---------- settings ----------
 function openSettings() {
   $('#s-key').value = S.key; $('#s-model').value = S.model; $('#s-repo').value = S.repo; $('#s-branch').value = S.branch; $('#s-gh').value = S.gh; $('#s-rules').value = S.rules;
@@ -68,14 +98,14 @@ function addFiles(files) {
       cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
       const dataUrl = cv.toDataURL('image/jpeg', 0.85);
       images.push({ name: f.name, dataUrl, b64: dataUrl.split(',')[1], mime: 'image/jpeg' });
-      URL.revokeObjectURL(url); renderThumbs();
+      URL.revokeObjectURL(url); renderThumbs(); persist();
     };
     img.src = url;
   }
 }
 function renderThumbs() {
   const t = $('#thumbs'); t.innerHTML = '';
-  images.forEach((im, i) => { const d = document.createElement('div'); d.className = 'thumb'; d.innerHTML = `<img src="${im.dataUrl}" alt=""><button type="button" aria-label="削除">×</button>`; d.querySelector('button').onclick = () => { images.splice(i, 1); renderThumbs(); }; t.appendChild(d); });
+  images.forEach((im, i) => { const d = document.createElement('div'); d.className = 'thumb'; d.innerHTML = `<img src="${im.dataUrl}" alt=""><button type="button" aria-label="削除">×</button>`; d.querySelector('button').onclick = () => { images.splice(i, 1); renderThumbs(); persist(); }; t.appendChild(d); });
 }
 $('#file-camera').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
 $('#file-pick').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
@@ -88,7 +118,7 @@ $('#btn-mic').addEventListener('click', () => {
   if (recOn) { rec.stop(); return; }
   rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = true;
   let base = $('#text').value; let finalText = '';
-  rec.onresult = (e) => { let interim = ''; finalText = ''; for (const r of e.results) { if (r.isFinal) finalText += r[0].transcript + '。'; else interim += r[0].transcript; } $('#text').value = (base ? base + '\n' : '') + finalText + interim; };
+  rec.onresult = (e) => { let interim = ''; finalText = ''; for (const r of e.results) { if (r.isFinal) finalText += r[0].transcript + '。'; else interim += r[0].transcript; } $('#text').value = (base ? base + '\n' : '') + finalText + interim; persist(); };
   rec.onend = () => { recOn = false; $('#btn-mic').classList.remove('on'); $('#btn-mic').textContent = '🎙 話す'; $('#mic-status').textContent = ''; };
   rec.onerror = (e) => { $('#mic-status').textContent = `音声エラー: ${e.error}`; };
   rec.start(); recOn = true; $('#btn-mic').classList.add('on'); $('#btn-mic').textContent = '■ 止める'; $('#mic-status').textContent = '聞いています…';
@@ -97,6 +127,8 @@ $('#btn-mic').addEventListener('click', () => {
 // ---------- fulfillment ----------
 const fulfillUI = () => { $('#fulfill-val').textContent = $('#fulfill-skip').checked ? '—' : `${$('#fulfill').value}/100`; $('#fulfill').disabled = $('#fulfill-skip').checked; };
 $('#fulfill').addEventListener('input', fulfillUI); $('#fulfill-skip').addEventListener('change', fulfillUI); fulfillUI();
+for (const id of ['#text', '#date', '#fulfill', '#fulfill-skip', '#review-md']) $(id).addEventListener('input', persist);
+$('#fulfill-skip').addEventListener('change', persist);
 
 // ---------- Claude ----------
 async function callClaude({ system, userBlocks }) {
@@ -145,7 +177,7 @@ $('#btn-compose').addEventListener('click', async () => {
       md = md.split(`{{IMG${i + 1}}}`).join(`images/${fname}`);
     });
     draft = { date, markdown: md, meta, path, sha: existing?.sha || null, imageFiles };
-    showReview();
+    showReview(); persist();
   } catch (e) { st.textContent = `失敗: ${e.message}`; }
   finally { btn.disabled = false; }
 });
@@ -164,7 +196,7 @@ function showReview() {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function show(name) { for (const v of document.querySelectorAll('.view')) v.classList.add('hidden'); $(`#view-${name}`).classList.remove('hidden'); window.scrollTo(0, 0); }
 
-$('#btn-back').addEventListener('click', () => { draft.markdown = $('#review-md').value; show('capture'); });
+$('#btn-back').addEventListener('click', () => { draft.markdown = $('#review-md').value; show('capture'); persist(); });
 $('#btn-download').addEventListener('click', () => {
   const md = $('#review-md').value; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.download = `${draft.date}.md`; a.click();
   draft.imageFiles.forEach((f, i) => { const b = document.createElement('a'); b.href = `data:image/jpeg;base64,${f.b64}`; b.download = f.path.split('/').pop(); setTimeout(() => b.click(), 200 * (i + 1)); });
@@ -183,10 +215,12 @@ $('#btn-commit').addEventListener('click', async () => {
 });
 const md_has_marker = (s) => s.includes('life-log-app: pending-stats');
 function markDone(msg) {
-  S.days[draft.date] = Date.now(); save();
+  S.days[draft.date] = Date.now(); save(); clearDraft();
   $('#done-summary').textContent = msg; renderStreak(); show('done');
 }
-$('#btn-again').addEventListener('click', () => { $('#text').value = ''; images = []; renderThumbs(); draft = null; show('capture'); });
+const resetCapture = () => { $('#text').value = ''; images = []; renderThumbs(); draft = null; $('#compose-status').textContent = ''; show('capture'); };
+$('#btn-again').addEventListener('click', resetCapture);
+$('#btn-discard').addEventListener('click', () => { if (confirm('下書き（文章・写真・確認待ちの日記）を消しますか？')) { clearDraft(); resetCapture(); $('#date').value = todayKey(); } });
 
 function renderStreak() {
   const keys = Object.keys(S.days).sort(); let cur = 0, prev = null;
@@ -199,5 +233,6 @@ function renderStreak() {
 // ---------- init ----------
 $('#date').value = todayKey();
 renderStreak();
+restore();
 if (!S.key && !MOCK) setTimeout(openSettings, 300);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

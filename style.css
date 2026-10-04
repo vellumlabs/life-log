@@ -42,3 +42,4 @@ dialog h2 { margin-top:0; } dialog h3 { margin:16px 0 6px; font-size:.95rem; col
 dialog label { display:block; font-size:.9rem; margin:8px 0; }
 dialog label input, dialog label select, dialog label textarea { margin-top:4px; }
 code { font-family: ui-monospace, Menlo, monospace; font-size:.9em; background:var(--card); padding:1px 5px; border-radius:4px; }
+button.link { background:none; border:none; padding:4px 0; color:var(--ink2); text-decoration:underline; font-size:.85rem; }
