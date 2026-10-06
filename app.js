@@ -54,7 +54,7 @@ $('#form-settings').addEventListener('submit', () => {
   const repoChanged = S.repo !== $('#s-repo').value.trim();
   S.key = $('#s-key').value.trim(); S.model = $('#s-model').value; S.repo = $('#s-repo').value.trim(); S.branch = $('#s-branch').value.trim() || 'main'; S.gh = $('#s-gh').value.trim(); S.rules = $('#s-rules').value.trim();
   if (repoChanged) { S.known = null; S.knownAt = 0; }
-  save();
+  save(); estimate();
 });
 $('#btn-test-gh').addEventListener('click', async () => {
   const st = $('#settings-status'); st.textContent = '確認中…';
@@ -97,13 +97,14 @@ function addFiles(files) {
       const cv = document.createElement('canvas'); cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
       cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
       const dataUrl = cv.toDataURL('image/jpeg', 0.85);
-      images.push({ name: f.name, dataUrl, b64: dataUrl.split(',')[1], mime: 'image/jpeg' });
+      images.push({ name: f.name, dataUrl, b64: dataUrl.split(',')[1], mime: 'image/jpeg', w: cv.width, h: cv.height });
       URL.revokeObjectURL(url); renderThumbs(); persist();
     };
     img.src = url;
   }
 }
 function renderThumbs() {
+  estimate();
   const t = $('#thumbs'); t.innerHTML = '';
   images.forEach((im, i) => { const d = document.createElement('div'); d.className = 'thumb'; d.innerHTML = `<img src="${im.dataUrl}" alt=""><button type="button" aria-label="削除">×</button>`; d.querySelector('button').onclick = () => { images.splice(i, 1); renderThumbs(); persist(); }; t.appendChild(d); });
 }
@@ -118,11 +119,30 @@ $('#btn-mic').addEventListener('click', () => {
   if (recOn) { rec.stop(); return; }
   rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = true;
   let base = $('#text').value; let finalText = '';
-  rec.onresult = (e) => { let interim = ''; finalText = ''; for (const r of e.results) { if (r.isFinal) finalText += r[0].transcript + '。'; else interim += r[0].transcript; } $('#text').value = (base ? base + '\n' : '') + finalText + interim; persist(); };
+  rec.onresult = (e) => { let interim = ''; finalText = ''; for (const r of e.results) { if (r.isFinal) finalText += r[0].transcript + '。'; else interim += r[0].transcript; } $('#text').value = (base ? base + '\n' : '') + finalText + interim; persist(); estimate(); };
   rec.onend = () => { recOn = false; $('#btn-mic').classList.remove('on'); $('#btn-mic').textContent = '🎙 話す'; $('#mic-status').textContent = ''; };
   rec.onerror = (e) => { $('#mic-status').textContent = `音声エラー: ${e.error}`; };
   rec.start(); recOn = true; $('#btn-mic').classList.add('on'); $('#btn-mic').textContent = '■ 止める'; $('#mic-status').textContent = '聞いています…';
 });
+
+// ---------- cost estimate (shown before sending; rough, no API call) ----------
+// $/MTok (input, output). Text ≈ 1.2 tokens/char for Japanese; images ≈ w×h/750 tokens
+// (Haiku downsizes to ~1.15MP ≈ 1,600 tokens). Output = JSON entry + adaptive thinking, given as a range.
+const PRICE = { 'claude-opus-5-5': [4, 20], 'claude-sonnet-5-5': [2, 10], 'claude-haiku-4-5': [1, 5] };
+const YEN = 150;
+function estimate() {
+  const el = $('#cost-est'); if (!el) return;
+  const [pin, pout] = PRICE[S.model] || PRICE['claude-opus-5-5'];
+  const sys = systemPrompt({ known: S.known, extraRules: S.rules }).length;
+  const txt = $('#text').value.length;
+  const img = images.reduce((a, im) => { const px = (im.w || 1600) * (im.h || 1200); return a + Math.round((S.model === 'claude-haiku-4-5' ? Math.min(px, 1.15e6) : px) / 750); }, 0);
+  const tin = Math.round((sys + txt) * 1.2) + img + 200;
+  const lo = 1500 + Math.round(txt * 1.2), hi = 4000 + Math.round(txt * 2.4);
+  const usd = (o) => (tin * pin + o * pout) / 1e6;
+  const f = (d) => (d * YEN < 1 ? '1円未満' : `約${Math.round(d * YEN)}円`);
+  el.textContent = `費用の目安: ${f(usd(lo))}〜${f(usd(hi)).replace('約', '')}（$${usd(lo).toFixed(3)}〜${usd(hi).toFixed(3)}、${S.model}、入力 約${tin.toLocaleString('ja-JP')} トークン${images.length ? `・写真 ${images.length} 枚` : ''}、1$=${YEN}円）`;
+}
+$('#text').addEventListener('input', estimate);
 
 // ---------- fulfillment ----------
 const fulfillUI = () => { $('#fulfill-val').textContent = $('#fulfill-skip').checked ? '—' : `${$('#fulfill').value}/100`; $('#fulfill').disabled = $('#fulfill-skip').checked; };
@@ -233,6 +253,7 @@ function renderStreak() {
 // ---------- init ----------
 $('#date').value = todayKey();
 renderStreak();
+estimate();
 restore();
 if (!S.key && !MOCK) setTimeout(openSettings, 300);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
