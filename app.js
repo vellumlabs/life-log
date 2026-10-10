@@ -1,6 +1,7 @@
 // Life Log — static PWA. Captures text / voice / images, asks Claude (BYOK, direct from the browser)
 // for an ai-diary-formatted entry, and commits it to the user's GitHub repo (Contents API).
 import { systemPrompt, outputSchema } from './prompt.js';
+import { joinSegments } from './voice.js';
 
 const $ = (s) => document.querySelector(s);
 const LS = 'life-log:v1';
@@ -118,8 +119,15 @@ if (!SR) { $('#btn-mic').disabled = true; $('#mic-status').textContent = 'この
 $('#btn-mic').addEventListener('click', () => {
   if (recOn) { rec.stop(); return; }
   rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = true;
-  let base = $('#text').value; let finalText = '';
-  rec.onresult = (e) => { let interim = ''; finalText = ''; for (const r of e.results) { if (r.isFinal) finalText += r[0].transcript + '。'; else interim += r[0].transcript; } $('#text').value = (base ? base + '\n' : '') + finalText + interim; persist(); estimate(); };
+  const base = $('#text').value; const segs = []; // per result index: { text, final, start, end }
+  rec.onresult = (e) => {
+    const now = Date.now();
+    for (let i = 0; i < e.results.length; i++) {
+      const r = e.results[i], s = segs[i] || (segs[i] = { start: now, end: null });
+      s.text = r[0].transcript; s.final = r.isFinal; if (r.isFinal && s.end == null) s.end = now;
+    }
+    $('#text').value = (base ? base + '\n' : '') + joinSegments(segs); persist(); estimate();
+  };
   rec.onend = () => { recOn = false; $('#btn-mic').classList.remove('on'); $('#btn-mic').textContent = '🎙 話す'; $('#mic-status').textContent = ''; };
   rec.onerror = (e) => { $('#mic-status').textContent = `音声エラー: ${e.error}`; };
   rec.start(); recOn = true; $('#btn-mic').classList.add('on'); $('#btn-mic').textContent = '■ 止める'; $('#mic-status').textContent = '聞いています…';
