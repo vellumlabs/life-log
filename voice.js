@@ -31,3 +31,16 @@ export function joinSegments(segs, gapMs = 3000) {
   }
   return out;
 }
+
+// The user edited the text while recording. Their text becomes the new base and only results from
+// the returned index on are rendered after it. If the edit left the trailing interim phrase intact,
+// it is cut from the base so it is not duplicated when it becomes final; otherwise the interim
+// phrase counts as kept by the user (its later corrections are dropped rather than duplicated).
+export function rebase(value, segs, from = 0) {
+  const live = segs.slice(from);
+  const k = live.findIndex((s) => s && !s.final);
+  if (k < 0) return { base: value, from: segs.length };
+  const tail = joinSegments(live).slice(joinSegments(live.slice(0, k)).length);
+  if (tail && value.endsWith(tail)) return { base: value.slice(0, value.length - tail.length), from: from + k };
+  return { base: value, from: segs.length };
+}

@@ -1,7 +1,7 @@
 // Life Log — static PWA. Captures text / voice / images, asks Claude (BYOK, direct from the browser)
 // for an ai-diary-formatted entry, and commits it to the user's GitHub repo (Contents API).
 import { systemPrompt, outputSchema } from './prompt.js';
-import { joinSegments } from './voice.js';
+import { joinSegments, rebase } from './voice.js';
 
 const $ = (s) => document.querySelector(s);
 const LS = 'life-log:v1';
@@ -119,14 +119,20 @@ if (!SR) { $('#btn-mic').disabled = true; $('#mic-status').textContent = 'この
 $('#btn-mic').addEventListener('click', () => {
   if (recOn) { rec.stop(); return; }
   rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = true;
-  const base = $('#text').value; const segs = []; // per result index: { text, final, start, end }
+  const ta = $('#text'); const segs = []; // per result index: { text, final, start, end }
+  let base = ta.value, sep = base ? '\n' : '', from = 0, shown = base;
   rec.onresult = (e) => {
+    if (ta.value !== shown) { ({ base, from } = rebase(ta.value, segs, from)); sep = ''; } // typed while recording: keep it
     const now = Date.now();
     for (let i = 0; i < e.results.length; i++) {
       const r = e.results[i], s = segs[i] || (segs[i] = { start: now, end: null });
       s.text = r[0].transcript; s.final = r.isFinal; if (r.isFinal && s.end == null) s.end = now;
     }
-    $('#text').value = (base ? base + '\n' : '') + joinSegments(segs); persist(); estimate();
+    const out = joinSegments(segs.slice(from));
+    const focused = document.activeElement === ta, a = ta.selectionStart, b = ta.selectionEnd;
+    ta.value = shown = base + (out && base ? sep : '') + out;
+    if (focused && b <= base.length) ta.setSelectionRange(a, b); // caret stays where the user was typing
+    persist(); estimate();
   };
   rec.onend = () => { recOn = false; $('#btn-mic').classList.remove('on'); $('#btn-mic').textContent = '🎙 話す'; $('#mic-status').textContent = ''; };
   rec.onerror = (e) => { $('#mic-status').textContent = `音声エラー: ${e.error}`; };
