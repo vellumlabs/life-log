@@ -225,14 +225,28 @@ function showReview() {
   $('#review-entities').innerHTML = (draft.meta.entities || []).map((e) => `<span class="${e.isNew ? 'new' : ''}">${esc(e.category)}: ${esc(e.name)}${e.isNew ? '（新規）' : ''}</span>`).join('') + (draft.meta.expenses_total ? `<span>支出 ${draft.meta.expenses_total.toLocaleString('ja-JP')}円</span>` : '');
   $('#commit-status').textContent = S.repo && S.gh ? `→ ${S.repo}@${S.branch}` : 'GitHub が未設定なので .md を端末に保存できます';
   $('#btn-commit').disabled = !(S.repo && S.gh);
+  $('#btn-download').textContent = navigator.canShare && matchMedia('(pointer: coarse)').matches ? '共有・保存' : '.md を保存';
   show('review');
 }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function show(name) { for (const v of document.querySelectorAll('.view')) v.classList.add('hidden'); $(`#view-${name}`).classList.remove('hidden'); window.scrollTo(0, 0); }
 
 $('#btn-back').addEventListener('click', () => { draft.markdown = $('#review-md').value; show('capture'); persist(); });
-$('#btn-download').addEventListener('click', () => {
-  const md = $('#review-md').value; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.download = `${draft.date}.md`; a.click();
+// iOS/Android: one share sheet with the .md and all images (Web Share API level 2). Desktop or unsupported: downloads.
+const b64File = (b64, name) => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new File([u], name, { type: 'image/jpeg' }); };
+function shareableFiles(md) {
+  if (!navigator.canShare || !matchMedia('(pointer: coarse)').matches) return null;
+  const imgs = draft.imageFiles.map((f) => b64File(f.b64, f.path.split('/').pop()));
+  for (const type of ['text/markdown', 'text/plain']) { const files = [new File([md], `${draft.date}.md`, { type }), ...imgs]; try { if (navigator.canShare({ files })) return files; } catch {} }
+  return null;
+}
+$('#btn-download').addEventListener('click', async () => {
+  const md = $('#review-md').value; const files = shareableFiles(md);
+  if (files) {
+    try { await navigator.share({ files, title: `${draft.date}.md` }); markDone(`共有シートで保存しました（${files.length} ファイル）`); return; }
+    catch (e) { if (e.name === 'AbortError') { $('#commit-status').textContent = '共有を取り消しました（下書きは残っています）'; return; } }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.download = `${draft.date}.md`; a.click();
   draft.imageFiles.forEach((f, i) => { const b = document.createElement('a'); b.href = `data:image/jpeg;base64,${f.b64}`; b.download = f.path.split('/').pop(); setTimeout(() => b.click(), 200 * (i + 1)); });
   markDone('端末に保存しました');
 });

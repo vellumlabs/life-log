@@ -21,7 +21,7 @@
 1. **ホーム画面に追加**: iOS Safari なら共有 → 「ホーム画面に追加」。Android Chrome なら「アプリをインストール」。普通のブラウザのタブでも動きます
 2. **⚙ 設定** を開く
    - **Claude の API キー**: [Anthropic Console](https://console.anthropic.com/) で発行（`sk-ant-…`）。モデルは既定が `claude-opus-5-5`（精度重視）。安く済ませたいなら `claude-sonnet-5-5` か `claude-haiku-4-5`
-   - **GitHub**（任意）: 日記リポジトリ（`owner/repo`）とブランチ、[Fine-grained personal access token](https://github.com/settings/personal-access-tokens/new)。権限は **そのリポジトリ 1 つだけ** に対して `Contents: Read and write` で十分です。未設定なら `.md` と画像を端末に保存できます
+   - **GitHub**（任意）: 日記リポジトリ（`owner/repo`）とブランチ、[Fine-grained personal access token](https://github.com/settings/personal-access-tokens/new)。権限は **そのリポジトリ 1 つだけ** に対して `Contents: Read and write` で十分です。未設定なら `.md` と画像を端末に保存できます（スマホでは「共有・保存」で `.md` と写真を 1 回の共有シートにまとめて渡します。共有に非対応なブラウザでは 1 ファイルずつダウンロード）
    - **追加の指示**（任意）: 「猫の名前は『みけ』」「会社名は書かない」など
 3. 日付を確認し、**🎙 話す**（ブラウザの音声認識、日本語）か、文章を書くか、**📷 撮る** でレシート・写真を付ける。充実度（0〜100）はスライダーで
 4. **Claude で日記にする** → 確認画面で本文を直す（「要確認」が出た項目はここで確かめる）→ **GitHub にコミット**
