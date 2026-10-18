@@ -1,5 +1,7 @@
-// System prompt: the ai-diary conventions (see ../README.md). Kept as data so the owner can audit it.
-export function systemPrompt({ known, extraRules }) {
+// System prompts: the ai-diary conventions (Japanese) and the LLM Wiki Kit Pro life-log conventions (English).
+// Kept as data so the owner can audit them.
+export function systemPrompt({ known, extraRules, format, spendCats }) {
+  if (format === 'kit') return kitPrompt({ known, extraRules, spendCats });
   const knownText = Object.entries(known || {}).filter(([, v]) => v.length).map(([cat, names]) => `- ${cat}: ${names.join('、')}`).join('\n') || '- （まだ無い）';
   return `あなたは個人の日記リポジトリ（Markdown、Git 管理）の記録係です。利用者が話した／書いた「一日あったこと」と添付画像から、規約どおりの日記ファイルを 1 つ作ります。質問はせず、不明点は「要確認」として JSON の questions に入れて先へ進みます。
 
@@ -60,6 +62,58 @@ ${extraRules || '（なし）'}
 JSON オブジェクトのみを返す: {"markdown": "<ファイル全文>", "fulfillment": <0-100 または null>, "entities": [{"category": "people|shops|places|media|activities|cooking", "name": "…", "isNew": true|false}], "expenses_total": <円の整数 または 0>, "images": [{"index": 1, "kind": "photo|receipt", "slug": "<ファイル名用の短い説明。レシートなら店名>"}], "questions": ["…"]}`;
 }
 
+// LLM Wiki Kit Pro "life log" (schema/life-log-workflow.md section 1). The app writes raw/ only; the wiki pages are
+// updated afterwards in the repository by Claude Code (skills/life-ingest).
+function kitPrompt({ known, extraRules, spendCats }) {
+  const knownText = Object.entries(known || {}).filter(([, v]) => v.length).map(([cat, names]) => `- ${cat}: ${names.join('; ')}`).join('\n') || '- (none yet)';
+  const cats = (spendCats && spendCats.length ? spendCats : ['groceries', 'dining', 'coffee', 'transport', 'household', 'health', 'fun', 'gifts', 'clothing', 'travel', 'housing']).join(', ');
+  return `You keep a personal life log (Markdown in Git). From the owner's account of one day (typed or a voice transcript) and the attached images, write that day's diary entry in the repository's format. Do not ask questions: put anything unclear in the JSON "questions" and carry on.
+
+# Format (strict)
+- The file is \`raw/diary/YYYY/YYYY-MM-DD.md\`. Write in English, first person, past tense, two to seven short sentences. Cut filler; keep facts, numbers, names and the one feeling the owner named. Do not add feelings, moods or details they did not say.
+- Template:
+\`\`\`
+# YYYY-MM-DD (Thu)
+
+Fulfillment: NN/100
+
+Sentences. Every person, shop, place, work of media, activity and dish cooked at home is a Markdown link to its wiki page:
+[Jules](../../../wiki/people/jules-bennett.md) and I had pho at [Lotus Pho](../../../wiki/shops/lotus-pho.md).
+
+## Spending
+
+| Shop | Item | Category | Amount |
+|---|---|---|---|
+| [Lotus Pho](../../../wiki/shops/lotus-pho.md) | dinner for two | dining | $31.40 |
+
+Total: $31.40
+Receipt: [receipt]({{IMGn}})
+
+## Photos
+
+![short description]({{IMGn}})
+\`\`\`
+- Day of week in English, three letters. Fulfillment: the owner's number; if they did not give one write \`Fulfillment: —/100\`. Omit a section (with its heading) when it has nothing.
+- Links: \`../../../wiki/<category>/<slug>.md\`, slug = ASCII kebab-case (\`grace-okafor\`, \`ember-and-bean\`). Categories: people / shops / places / media / activities / cooking. Never \`[[wiki links]]\`.
+- **Known pages** (below, "slug (one line)"): if a name is the same person/shop/place as a known page, link that slug exactly ("Mom" may be \`ellen-marlow\`). Otherwise make a new kebab-case slug from the name and set isNew=true in entities.
+- Spending: one row per payment that has an amount. Shop links a shops/ page when it is a place worth tracking; one-off payees (landlord, utility, airline) are plain text. Category is one of: ${cats} (closest one; if unsure, add a question). Amounts exactly as said or as printed, \`$1,234.56\`; never round or estimate. \`Total:\` is the sum of the rows. A purchase without an amount is not a row. Subscription charges are not rows.
+- Receipt images: read shop, date, items and total; check that items (plus tax, minus discounts) add up to the total. Use the receipt's Total for the row; if it does not add up, write \`Mismatch: items sum to $X, receipt says $Y\` under the table and add a question. Reference a receipt with a \`Receipt:\` line, not under Photos. If the receipt date differs from the entry date, add a question (keep the entry date).
+- Other images go under "## Photos" as \`![short description]({{IMGn}})\`.
+- Image references are always the placeholders \`{{IMG1}}\`, \`{{IMG2}}\`, … in the order given; the app replaces them with paths.
+- If entries for this day already exist (they are shown), they are immutable: write a new entry with **only what is new**, in the same format. Do not repeat their sentences or spending rows.
+- If the owner marks something as private ("this is private: …"), leave it out entirely and add the question "The part marked private was not recorded".
+- No signature, preface or code fence in the entry.
+
+# Known pages (wiki/<category>/index.md)
+${knownText}
+
+# Owner's extra instructions
+${extraRules || '(none)'}
+
+# Reply
+A JSON object only: {"markdown": "<whole file>", "fulfillment": <0-100 or null>, "entities": [{"category": "people|shops|places|media|activities|cooking", "name": "<slug>", "isNew": true|false}], "expenses_total": <dollars, e.g. 31.4, or 0>, "images": [{"index": 1, "kind": "photo|receipt", "slug": "<short ASCII description for the file name; the shop for a receipt>"}], "questions": ["…"]}`;
+}
+
 export const outputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -68,7 +122,7 @@ export const outputSchema = {
     markdown: { type: 'string' },
     fulfillment: { type: ['integer', 'null'] },
     entities: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['category', 'name', 'isNew'], properties: { category: { type: 'string', enum: ['people', 'shops', 'places', 'media', 'activities', 'cooking'] }, name: { type: 'string' }, isNew: { type: 'boolean' } } } },
-    expenses_total: { type: 'integer' },
+    expenses_total: { type: 'number' },
     images: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['index', 'kind', 'slug'], properties: { index: { type: 'integer' }, kind: { type: 'string', enum: ['photo', 'receipt'] }, slug: { type: 'string' } } } },
     questions: { type: 'array', items: { type: 'string' } },
   },

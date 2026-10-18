@@ -107,8 +107,12 @@
     <label>ブランチ <input type="text" id="s-branch" placeholder="main"></label>
     <label>Personal Access Token（contents: write） <input type="password" id="s-gh" autocomplete="off" placeholder="github_pat_…"></label>
     <h3>日記の規約</h3>
+    <label>リポジトリの形式 <select id="s-format">
+        <option value="ai-diary">ai-diary 型（日本語・円）</option>
+        <option value="kit">Kit Pro の life log（英語・$）</option>
+      </select></label>
     <label>追加の指示（任意） <textarea id="s-rules" rows="3" placeholder="例: 猫の名前は『みけ』。会社名は書かない。"></textarea></label>
-    <p class="small">規約の本体（常体・簡潔、充実度、支出テーブル、エンティティへの相対リンク）はアプリに組み込み済みです。リポジトリの <code>stats/*/index.md</code> から既存の人物・店・場所などの名前を読み取り、同じ名前にリンクします。</p>
+    <p class="small">規約の本体（常体・簡潔、充実度、支出テーブル、エンティティへの相対リンク）はアプリに組み込み済みです。リポジトリの <code>stats/*/index.md</code>（Kit 形式は <code>wiki/*/index.md</code>）から既存の人物・店・場所などの名前を読み取り、同じ名前にリンクします。</p>
     <div class="row">
       <button type="button" id="btn-test-gh">GitHub 接続を確認</button>
       <button class="primary" value="ok">保存</button>

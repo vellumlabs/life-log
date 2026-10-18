@@ -14,7 +14,7 @@
 
 - 鍵もデータも **あなたの端末とあなたのリポジトリにだけ** 置かれます。Vellum Labs のサーバは存在せず、通信先は Anthropic と GitHub だけです
 - 日記の規約（常体・簡潔、充実度、支出テーブル、人物・店・場所・作品・自炊へのリンク）はアプリに組み込み済みです
-- 統計（人物・店・支出の集計ページ）の更新は、リポジトリ側の Claude Code に任せます。同梱の [`skills/diary-ingest`](skills/diary-ingest/SKILL.md) を置くと `/diary-ingest` で取り込めます
+- 統計（人物・店・支出の集計ページ）の更新は、リポジトリ側の Claude Code に任せます。同梱の [`skills/diary-ingest`](skills/diary-ingest/SKILL.md)（ai-diary 型）か [`skills/life-ingest`](skills/life-ingest/SKILL.md)（LLM Wiki Kit Pro の life log）を置くと `/diary-ingest`・`/life-ingest` で取り込めます
 
 ## 使い方
 
@@ -26,11 +26,20 @@
 3. 日付を確認し、**🎙 話す**（ブラウザの音声認識、日本語）か、文章を書くか、**📷 撮る** でレシート・写真を付ける。充実度（0〜100）はスライダーで
 4. **Claude で日記にする** → 確認画面で本文を直す（「要確認」が出た項目はここで確かめる）→ **GitHub にコミット**
 
-同じ日に 2 回目を書くと、既存ファイルと統合して書き直します（支出行は残り、合計は再計算されます）。
+同じ日に 2 回目を書くと、既存ファイルと統合して書き直します（支出行は残り、合計は再計算されます）。Kit 形式では既存の日記は変えず、`YYYY-MM-DD-2.md` として追加します。
 
 ## 日記リポジトリの形式
 
-このアプリは次の構成を前提にします（[LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro に収録している「人生の実績管理」wiki と同じ規約です。既存のリポジトリに合わせたい場合は `prompt.js` の規約を書き換えてください）。
+設定の「リポジトリの形式」で 2 つから選びます。既存のリポジトリに合わせたい場合は `prompt.js` の規約を書き換えてください。
+
+| 形式 | 日記 | 既知の名前を読む場所 | 言語・通貨 | 同じ日の 2 回目 | 統計の更新 |
+|---|---|---|---|---|---|
+| **ai-diary 型**（既定） | `diary/YYYY/YYYY-MM-DD.md` | `stats/*/index.md` | 日本語・円 | 統合して書き直す | `skills/diary-ingest` |
+| **LLM Wiki Kit Pro の life log** | `raw/diary/YYYY/YYYY-MM-DD.md` | `wiki/*/index.md`（slug と一行説明）、支出カテゴリは `wiki/finance/index.md` | 英語・ドル | `-2.md` を新規作成（raw は不変） | `skills/life-ingest` |
+
+Kit 形式は [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro 収録の life log wiki（`schema/life-log-workflow.md` の 1 日分の書式）に合わせています。レシート画像は `raw/receipts/images/`、写真は `raw/diary/YYYY/images/` に置き、ファイル名は ASCII の kebab-case です。アプリは `raw/` だけを書き、`wiki/` の更新はリポジトリ側の Claude Code が `skills/life-ingest/SKILL.md` で行います（`wiki/log.md` に `[day]` 行の無い日記を取り込みます）。
+
+以下は ai-diary 型の構成です。
 
 ```
 diary/
@@ -68,7 +77,7 @@ stats/
 合計: 980円
 ```
 
-コミットした本文の末尾には `<!-- life-log-app: pending-stats -->` の目印が付きます。リポジトリ側で `/diary-ingest` を実行すると、目印のある日記から統計ページを更新し、目印を消します。
+コミットした本文の末尾には `<!-- life-log-app: pending-stats -->` の目印が付きます。リポジトリ側で `/diary-ingest` を実行すると、目印のある日記から統計ページを更新し、目印を消します（Kit 形式は raw を変えないため目印を付けません。`/life-ingest` は `wiki/log.md` に載っていない日記を拾います）。
 
 ### 統計の取り込み（Claude Code）
 
@@ -77,6 +86,8 @@ cp -r skills/diary-ingest  <日記リポジトリ>/.claude/skills/diary-ingest
 cd <日記リポジトリ> && claude
 > /diary-ingest
 ```
+
+Kit 形式の場合は `skills/life-ingest` を `<life-log リポジトリ>/.claude/skills/life-ingest` に置き、`/life-ingest` を実行します。
 
 ## プライバシーと費用
 

@@ -1,13 +1,14 @@
 // Life Log — static PWA. Captures text / voice / images, asks Claude (BYOK, direct from the browser)
-// for an ai-diary-formatted entry, and commits it to the user's GitHub repo (Contents API).
+// for an entry in the repo's format (ai-diary or LLM Wiki Kit life log, see format.js), and commits it to the user's GitHub repo (Contents API).
 import { systemPrompt, outputSchema } from './prompt.js';
+import { fmt, CATS, diaryPath, entryNo, indexPath, dayOfWeek, parseKnown, parseSpendCats, imageFile, money } from './format.js';
 import { joinSegments, rebase } from './voice.js';
 
 const $ = (s) => document.querySelector(s);
 const LS = 'life-log:v1';
 const load = () => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } };
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(S)); } catch {} };
-const S = Object.assign({ key: '', model: 'claude-opus-5-5', repo: '', branch: 'main', gh: '', rules: '', known: null, knownAt: 0, days: {} }, load());
+const S = Object.assign({ key: '', model: 'claude-opus-5-5', repo: '', branch: 'main', gh: '', rules: '', format: 'ai-diary', spendCats: null, known: null, knownAt: 0, days: {} }, load());
 const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const MOCK = new URLSearchParams(location.search).has('mock');
 
@@ -46,15 +47,16 @@ function clearDraft() { clearTimeout(persistTimer); idb('readwrite', (st) => st.
 
 // ---------- settings ----------
 function openSettings() {
-  $('#s-key').value = S.key; $('#s-model').value = S.model; $('#s-repo').value = S.repo; $('#s-branch').value = S.branch; $('#s-gh').value = S.gh; $('#s-rules').value = S.rules;
+  $('#s-key').value = S.key; $('#s-model').value = S.model; $('#s-repo').value = S.repo; $('#s-branch').value = S.branch; $('#s-gh').value = S.gh; $('#s-rules').value = S.rules; $('#s-format').value = S.format;
   $('#settings-status').textContent = '';
   $('#dlg-settings').showModal();
 }
 $('#btn-settings').addEventListener('click', openSettings);
 $('#form-settings').addEventListener('submit', () => {
-  const repoChanged = S.repo !== $('#s-repo').value.trim();
+  const repoChanged = S.repo !== $('#s-repo').value.trim() || S.format !== $('#s-format').value;
+  S.format = $('#s-format').value;
   S.key = $('#s-key').value.trim(); S.model = $('#s-model').value; S.repo = $('#s-repo').value.trim(); S.branch = $('#s-branch').value.trim() || 'main'; S.gh = $('#s-gh').value.trim(); S.rules = $('#s-rules').value.trim();
-  if (repoChanged) { S.known = null; S.knownAt = 0; }
+  if (repoChanged) { S.known = null; S.knownAt = 0; S.spendCats = null; }
   save(); estimate();
 });
 $('#btn-test-gh').addEventListener('click', async () => {
@@ -77,14 +79,14 @@ const b64utf8 = (b) => decodeURIComponent(escape(atob(b.replace(/\n/g, ''))));
 async function ghGetFile(path) { const r = await gh(`/repos/${S.repo}/contents/${encodeURI(path)}?ref=${S.branch}`); return r ? { sha: r.sha, text: r.encoding === 'base64' ? b64utf8(r.content) : r.content } : null; }
 async function ghPutFile(path, b64, message, sha) { return gh(`/repos/${S.repo}/contents/${encodeURI(path)}`, { method: 'PUT', body: { message, content: b64, branch: S.branch, ...(sha ? { sha } : {}), committer: { name: 'Life Log', email: 'life-log@users.noreply.github.com' } } }); }
 
-const CATS = ['people', 'shops', 'places', 'media', 'activities', 'cooking'];
 async function loadKnown(force = false) {
   if (!S.repo || !S.gh) return {};
   if (!force && S.known && Date.now() - S.knownAt < 6 * 3600e3) return S.known;
   const known = {};
   await Promise.all(CATS.map(async (c) => {
-    try { const f = await ghGetFile(`stats/${c}/index.md`); known[c] = f ? [...f.text.matchAll(/^\|\s*\[([^\]]+)\]\(/gm)].map((m) => m[1]) : []; } catch { known[c] = []; }
+    try { const f = await ghGetFile(indexPath(S.format, c)); known[c] = parseKnown(S.format, f?.text); } catch { known[c] = []; }
   }));
+  if (S.format === 'kit') { try { S.spendCats = parseSpendCats((await ghGetFile(indexPath('kit', 'finance')))?.text); } catch { S.spendCats = null; } }
   S.known = known; S.knownAt = Date.now(); save();
   return known;
 }
@@ -147,7 +149,7 @@ const YEN = 150;
 function estimate() {
   const el = $('#cost-est'); if (!el) return;
   const [pin, pout] = PRICE[S.model] || PRICE['claude-opus-5-5'];
-  const sys = systemPrompt({ known: S.known, extraRules: S.rules }).length;
+  const sys = systemPrompt({ known: S.known, extraRules: S.rules, format: S.format, spendCats: S.spendCats }).length;
   const txt = $('#text').value.length;
   const img = images.reduce((a, im) => { const px = (im.w || 1600) * (im.h || 1200); return a + Math.round((S.model === 'claude-haiku-4-5' ? Math.min(px, 1.15e6) : px) / 750); }, 0);
   const tin = Math.round((sys + txt) * 1.2) + img + 200;
@@ -177,7 +179,11 @@ async function callClaude({ system, userBlocks }) {
   try { return JSON.parse(text); } catch { const i = text.indexOf('{'), j = text.lastIndexOf('}'); return JSON.parse(text.slice(i, j + 1)); }
 }
 function mockResponse() {
-  const d = $('#date').value; const dow = '日月火水木金土'[new Date(d + 'T12:00:00').getDay()];
+  const d = $('#date').value; const dow = dayOfWeek(S.format, d);
+  if (S.format === 'kit') {
+    const w = (c, s, t) => `[${t}](../../../wiki/${c}/${s}.md)`;
+    return { markdown: `# ${d} (${dow})\n\nFulfillment: 80/100\n\nPlanned the new project with ${w('people', 'sam-rivera', 'Sam')} in the morning. Lunch at ${w('shops', 'lotus-pho', 'Lotus Pho')}. Made ${w('cooking', 'red-lentil-dal', 'dal')} for dinner.\n\n## Spending\n\n| Shop | Item | Category | Amount |\n|---|---|---|---|\n| ${w('shops', 'lotus-pho', 'Lotus Pho')} | lunch | dining | $14.50 |\n\nTotal: $14.50\n${images.length ? '\n## Photos\n\n' + images.map((_, i) => `![photo ${i + 1}]({{IMG${i + 1}}})`).join('\n') + '\n' : ''}`, fulfillment: 80, entities: [{ category: 'people', name: 'sam-rivera', isNew: true }, { category: 'shops', name: 'lotus-pho', isNew: false }, { category: 'cooking', name: 'red-lentil-dal', isNew: true }], expenses_total: 14.5, images: images.map((_, i) => ({ index: i + 1, kind: 'photo', slug: `photo ${i + 1}` })), questions: ['(mock response)'] };
+  }
   return { markdown: `# ${d} (${dow})\n\n充実度: 80/100\n\n## 今日のまとめ\n山田さんと打ち合わせをした。昼はサイゼリヤ。夜はカレーを作った。\n\n## 出来事\n- 午前、山田さんと新規案件の打ち合わせ\n- 昼にサイゼリヤでランチ\n- 夜にカレーを自炊\n\n## 登場人物\n- [山田さん](../../stats/people/山田さん.md) — 新規案件の打ち合わせ\n\n## お店・場所など\n- [サイゼリヤ](../../stats/shops/サイゼリヤ.md) — ランチ\n- [カレー](../../stats/cooking/カレー.md) — 夕食に自炊\n\n## 支出\n| 店 | 品目 | カテゴリ | 金額 |\n|----|------|---------|------|\n| [サイゼリヤ](../../stats/shops/サイゼリヤ.md) | ランチ | [外食](../../stats/finance/外食.md) | 980円 |\n\n合計: 980円\n${images.length ? '\n## 写真\n' + images.map((_, i) => `![写真 ${i + 1}]({{IMG${i + 1}}})`).join('\n') + '\n' : ''}`, fulfillment: 80, entities: [{ category: 'people', name: '山田さん', isNew: true }, { category: 'shops', name: 'サイゼリヤ', isNew: false }, { category: 'cooking', name: 'カレー', isNew: true }], expenses_total: 980, images: images.map((_, i) => ({ index: i + 1, kind: 'photo', slug: `写真${i + 1}` })), questions: ['（モック応答）'] };
 }
 
@@ -191,26 +197,34 @@ $('#btn-compose').addEventListener('click', async () => {
   try {
     st.textContent = '既存の名前と同日のファイルを確認中…';
     const known = await loadKnown();
-    const [y] = date.split('-'); const path = `diary/${y}/${date}.md`;
-    let existing = null; if (S.repo && S.gh) { try { existing = await ghGetFile(path); } catch {} }
-    const dow = '日月火水木金土'[new Date(date + 'T12:00:00').getDay()];
+    const kit = S.format === 'kit';
+    // ai-diary merges into the day's file; kit's raw/ is immutable, so the next free YYYY-MM-DD-N.md is used.
+    let path = diaryPath(S.format, date), existing = null; const earlier = [];
+    if (S.repo && S.gh) {
+      try {
+        if (fmt(S.format).merge) existing = await ghGetFile(path);
+        else for (let n = 1; n <= 9; n++) { const p = diaryPath(S.format, date, n), f = await ghGetFile(p); path = p; if (!f) break; earlier.push(f.text); }
+      } catch {}
+    }
+    const dow = dayOfWeek(S.format, date);
     const fulfill = $('#fulfill-skip').checked ? null : Number($('#fulfill').value);
     const userBlocks = [];
-    images.forEach((im, i) => { userBlocks.push({ type: 'text', text: `画像 ${i + 1}（プレースホルダ {{IMG${i + 1}}}）:` }); userBlocks.push({ type: 'image', source: { type: 'base64', media_type: im.mime, data: im.b64 } }); });
-    userBlocks.push({ type: 'text', text: `日付: ${date} (${dow})\n充実度: ${fulfill === null ? '記録しない' : fulfill}\n\n今日あったこと:\n${text || '（文章なし。画像から記録する）'}${existing ? `\n\n同日の既存ファイル（統合して書き直す）:\n${existing.text}` : ''}` });
+    images.forEach((im, i) => { userBlocks.push({ type: 'text', text: kit ? `Image ${i + 1} (placeholder {{IMG${i + 1}}}):` : `画像 ${i + 1}（プレースホルダ {{IMG${i + 1}}}）:` }); userBlocks.push({ type: 'image', source: { type: 'base64', media_type: im.mime, data: im.b64 } }); });
+    userBlocks.push({ type: 'text', text: kit
+      ? `Date: ${date} (${dow})\nFulfillment: ${fulfill === null ? 'not given' : fulfill}\n\nThe owner's account of the day:\n${text || '(no text; record from the images)'}${earlier.length ? `\n\nEntries already committed for this day (immutable; write only what is new):\n${earlier.join('\n\n---\n\n')}` : ''}`
+      : `日付: ${date} (${dow})\n充実度: ${fulfill === null ? '記録しない' : fulfill}\n\n今日あったこと:\n${text || '（文章なし。画像から記録する）'}${existing ? `\n\n同日の既存ファイル（統合して書き直す）:\n${existing.text}` : ''}` });
     st.textContent = `Claude（${S.model}）が日記にしています…`;
-    const meta = await callClaude({ system: systemPrompt({ known, extraRules: S.rules }), userBlocks });
+    const meta = await callClaude({ system: systemPrompt({ known, extraRules: S.rules, format: S.format, spendCats: S.spendCats }), userBlocks });
     // resolve image placeholders to paths
     const imageFiles = [];
     let md = meta.markdown;
     images.forEach((im, i) => {
-      const info = (meta.images || []).find((x) => x.index === i + 1) || { kind: 'photo', slug: `写真${i + 1}` };
-      const slug = (info.slug || `写真${i + 1}`).replace(/[\\/:*?"<>|\s]+/g, '-').slice(0, 24);
-      const fname = `${date}-${info.kind === 'receipt' ? 'レシート-' : ''}${slug}${i ? '-' + (i + 1) : ''}.jpg`;
-      imageFiles.push({ path: `diary/${y}/images/${fname}`, b64: im.b64 });
-      md = md.split(`{{IMG${i + 1}}}`).join(`images/${fname}`);
+      const info = (meta.images || []).find((x) => x.index === i + 1) || { kind: 'photo' };
+      const f = imageFile(S.format, date, info, i, entryNo(path));
+      imageFiles.push({ path: f.path, b64: im.b64 });
+      md = md.split(`{{IMG${i + 1}}}`).join(f.rel);
     });
-    draft = { date, markdown: md, meta, path, sha: existing?.sha || null, imageFiles };
+    draft = { date, markdown: md, meta, path, sha: existing?.sha || null, format: S.format, imageFiles };
     showReview(); persist();
   } catch (e) { st.textContent = `失敗: ${e.message}`; }
   finally { btn.disabled = false; }
@@ -218,11 +232,13 @@ $('#btn-compose').addEventListener('click', async () => {
 
 function showReview() {
   $('#review-path').textContent = draft.path;
-  $('#review-merge').classList.toggle('hidden', !draft.sha);
+  const extra = entryNo(draft.path) > 1;
+  $('#review-merge').classList.toggle('hidden', !draft.sha && !extra);
+  $('#review-merge').textContent = extra ? '同日の既存の日記は変えずに追加分として新規作成' : '同日の既存ファイルに統合';
   $('#review-md').value = draft.markdown;
   const q = $('#review-questions'); const qs = (draft.meta.questions || []).filter(Boolean);
   q.classList.toggle('hidden', !qs.length); q.innerHTML = qs.length ? `要確認:<ul>${qs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
-  $('#review-entities').innerHTML = (draft.meta.entities || []).map((e) => `<span class="${e.isNew ? 'new' : ''}">${esc(e.category)}: ${esc(e.name)}${e.isNew ? '（新規）' : ''}</span>`).join('') + (draft.meta.expenses_total ? `<span>支出 ${draft.meta.expenses_total.toLocaleString('ja-JP')}円</span>` : '');
+  $('#review-entities').innerHTML = (draft.meta.entities || []).map((e) => `<span class="${e.isNew ? 'new' : ''}">${esc(e.category)}: ${esc(e.name)}${e.isNew ? '（新規）' : ''}</span>`).join('') + (draft.meta.expenses_total ? `<span>支出 ${money(draft.format, draft.meta.expenses_total)}</span>` : '');
   $('#commit-status').textContent = S.repo && S.gh ? `→ ${S.repo}@${S.branch}` : 'GitHub が未設定なので .md を端末に保存できます';
   $('#btn-commit').disabled = !(S.repo && S.gh);
   $('#btn-download').textContent = navigator.canShare && matchMedia('(pointer: coarse)').matches ? '共有・保存' : '.md を保存';
@@ -237,27 +253,29 @@ const b64File = (b64, name) => { const bin = atob(b64); const u = new Uint8Array
 function shareableFiles(md) {
   if (!navigator.canShare || !matchMedia('(pointer: coarse)').matches) return null;
   const imgs = draft.imageFiles.map((f) => b64File(f.b64, f.path.split('/').pop()));
-  for (const type of ['text/markdown', 'text/plain']) { const files = [new File([md], `${draft.date}.md`, { type }), ...imgs]; try { if (navigator.canShare({ files })) return files; } catch {} }
+  for (const type of ['text/markdown', 'text/plain']) { const files = [new File([md], draft.path.split('/').pop(), { type }), ...imgs]; try { if (navigator.canShare({ files })) return files; } catch {} }
   return null;
 }
 $('#btn-download').addEventListener('click', async () => {
   const md = $('#review-md').value; const files = shareableFiles(md);
   if (files) {
-    try { await navigator.share({ files, title: `${draft.date}.md` }); markDone(`共有シートで保存しました（${files.length} ファイル）`); return; }
+    try { await navigator.share({ files, title: draft.path.split('/').pop() }); markDone(`共有シートで保存しました（${files.length} ファイル）`); return; }
     catch (e) { if (e.name === 'AbortError') { $('#commit-status').textContent = '共有を取り消しました（下書きは残っています）'; return; } }
   }
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.download = `${draft.date}.md`; a.click();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.download = draft.path.split('/').pop(); a.click();
   draft.imageFiles.forEach((f, i) => { const b = document.createElement('a'); b.href = `data:image/jpeg;base64,${f.b64}`; b.download = f.path.split('/').pop(); setTimeout(() => b.click(), 200 * (i + 1)); });
   markDone('端末に保存しました');
 });
 $('#btn-commit').addEventListener('click', async () => {
   const st = $('#commit-status'); const btn = $('#btn-commit'); btn.disabled = true;
   try {
-    const md = $('#review-md').value + (md_has_marker($('#review-md').value) ? '' : `\n\n<!-- life-log-app: pending-stats -->\n`);
+    // ai-diary: the marker tells diary-ingest what to pick up. kit: raw/ is immutable, so life-ingest finds entries without a [day] line in wiki/log.md.
+    const raw = $('#review-md').value; const md = fmt(draft.format).marker && !md_has_marker(raw) ? `${raw}\n\n<!-- life-log-app: pending-stats -->\n` : raw.replace(/\s*$/, '\n');
     for (const f of draft.imageFiles) { st.textContent = `画像をコミット中… ${f.path}`; const ex = await gh(`/repos/${S.repo}/contents/${encodeURI(f.path)}?ref=${S.branch}`); await ghPutFile(f.path, f.b64, `diary: ${draft.date} (image)`, ex?.sha); }
     st.textContent = '日記をコミット中…';
     const cur = await ghGetFile(draft.path); // re-read sha in case it changed
-    const r = await ghPutFile(draft.path, utf8b64(md), `diary: ${draft.date}`, cur?.sha);
+    if (cur && !fmt(draft.format).merge) throw new Error(`${draft.path} が既にあります（raw は上書きしません）。「戻る」→ もう一度「Claude で日記にする」で次の番号になります`);
+    const r = await ghPutFile(draft.path, utf8b64(md), `${draft.format === 'kit' ? 'raw' : 'diary'}: ${draft.date}`, cur?.sha);
     markDone(`${S.repo} に ${draft.path} をコミットしました（${r.commit.sha.slice(0, 7)}）`);
   } catch (e) { st.textContent = `失敗: ${e.message}`; btn.disabled = false; }
 });
