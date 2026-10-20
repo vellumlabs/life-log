@@ -6,6 +6,8 @@
 
 👉 **https://vellumlabs.github.io/life-log/**
 
+> **English**: the app's UI is in Japanese or English and follows your browser (switch any time in ⚙ → *Language*). Voice input uses the same language. For an English diary in the [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro life-log layout, pick *Repository format → Kit Pro life log* (a first run in an English browser picks it for you), then run `/life-ingest` in the repo with Claude Code.
+
 ```
 あなたのスマホ ──(Claude API キー)──▶ Anthropic   … 文章・音声・レシート画像を日記 Markdown に
        │
@@ -22,8 +24,9 @@
 2. **⚙ 設定** を開く
    - **Claude の API キー**: [Anthropic Console](https://console.anthropic.com/) で発行（`sk-ant-…`）。モデルは既定が `claude-opus-5-5`（精度重視）。安く済ませたいなら `claude-sonnet-5-5` か `claude-haiku-4-5`
    - **GitHub**（任意）: 日記リポジトリ（`owner/repo`）とブランチ、[Fine-grained personal access token](https://github.com/settings/personal-access-tokens/new)。権限は **そのリポジトリ 1 つだけ** に対して `Contents: Read and write` で十分です。未設定なら `.md` と画像を端末に保存できます（スマホでは「共有・保存」で `.md` と写真を 1 回の共有シートにまとめて渡します。共有に非対応なブラウザでは 1 ファイルずつダウンロード）
+   - **表示言語**: 既定はブラウザに合わせて日本語か英語。⚙ の「表示言語 / Language」で固定できます（日記の言語は「リポジトリの形式」で決まり、表示言語とは独立です）
    - **追加の指示**（任意）: 「猫の名前は『みけ』」「会社名は書かない」など
-3. 日付を確認し、**🎙 話す**（ブラウザの音声認識、日本語）か、文章を書くか、**📷 撮る** でレシート・写真を付ける。充実度（0〜100）はスライダーで
+3. 日付を確認し、**🎙 話す**（ブラウザの音声認識。表示言語に合わせて日本語か英語）か、文章を書くか、**📷 撮る** でレシート・写真を付ける。充実度（0〜100）はスライダーで
 4. **Claude で日記にする** → 確認画面で本文を直す（「要確認」が出た項目はここで確かめる）→ **GitHub にコミット**
 
 同じ日に 2 回目を書くと、既存ファイルと統合して書き直します（支出行は残り、合計は再計算されます）。Kit 形式では既存の日記は変えず、`YYYY-MM-DD-2.md` として追加します。

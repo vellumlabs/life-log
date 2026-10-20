@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Life Log — 日記の入口</title>
+<title data-i18n="title">Life Log — 日記の入口</title>
 <meta name="description" content="話す・撮る・書く。Claude があなたの日記リポジトリの規約で Markdown にして、GitHub にコミットします。鍵もデータもあなたの端末とリポジトリにだけ。">
 <meta name="theme-color" content="#f6f2ea" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1d1b17" media="(prefers-color-scheme: dark)">
@@ -21,8 +21,8 @@
 <header class="top">
   <h1>Life Log</h1>
   <div class="top-right">
-    <span id="streak" class="streak" title="連続記録日数"></span>
-    <button id="btn-settings" class="icon" aria-label="設定">⚙</button>
+    <span id="streak" class="streak" title="連続記録日数" data-i18n-title="streakTitle"></span>
+    <button id="btn-settings" class="icon" aria-label="設定" data-i18n-aria="settings">⚙</button>
   </div>
 </header>
 
@@ -30,34 +30,34 @@
   <!-- 入力 -->
   <section id="view-capture" class="view">
     <div class="field">
-      <label for="date">日付</label>
+      <label for="date" data-i18n="date">日付</label>
       <input type="date" id="date">
     </div>
     <div class="field">
-      <label for="text">今日あったこと</label>
-      <textarea id="text" rows="7" placeholder="話すか、書く。例: 午前は山田さんと打ち合わせ。昼はサイゼで 980 円。夜は自炊でカレー。充実度 80。"></textarea>
+      <label for="text" data-i18n="text">今日あったこと</label>
+      <textarea id="text" rows="7" data-i18n-ph="textPh" placeholder="話すか、書く。例: 午前は山田さんと打ち合わせ。昼はサイゼで 980 円。夜は自炊でカレー。充実度 80。"></textarea>
       <div class="row">
-        <button id="btn-mic" class="mic" type="button">🎙 話す</button>
+        <button id="btn-mic" class="mic" type="button" data-i18n="mic">🎙 話す</button>
         <span id="mic-status" class="small"></span>
       </div>
     </div>
     <div class="field">
-      <label>写真・レシート</label>
+      <label data-i18n="photos">写真・レシート</label>
       <div class="row">
-        <label class="file-btn">📷 撮る<input type="file" id="file-camera" accept="image/*" capture="environment" multiple hidden></label>
-        <label class="file-btn">🖼 選ぶ<input type="file" id="file-pick" accept="image/*" multiple hidden></label>
+        <label class="file-btn"><span data-i18n="camera">📷 撮る</span><input type="file" id="file-camera" accept="image/*" capture="environment" multiple hidden></label>
+        <label class="file-btn"><span data-i18n="pick">🖼 選ぶ</span><input type="file" id="file-pick" accept="image/*" multiple hidden></label>
       </div>
       <div id="thumbs" class="thumbs"></div>
     </div>
     <div class="field">
-      <label for="fulfill">充実度 <span id="fulfill-val">—</span></label>
+      <label for="fulfill"><span data-i18n="fulfill">充実度</span> <span id="fulfill-val">—</span></label>
       <input type="range" id="fulfill" min="0" max="100" value="70" step="5">
-      <label class="check"><input type="checkbox" id="fulfill-skip"> 今日は付けない</label>
+      <label class="check"><input type="checkbox" id="fulfill-skip"> <span data-i18n="fulfillSkip">今日は付けない</span></label>
     </div>
-    <button id="btn-compose" class="primary big">Claude で日記にする</button>
+    <button id="btn-compose" class="primary big" data-i18n="compose">Claude で日記にする</button>
     <p id="cost-est" class="small"></p>
     <p id="compose-status" class="small"></p>
-    <button id="btn-discard" class="link hidden" type="button">下書きを消す</button>
+    <button id="btn-discard" class="link hidden" type="button" data-i18n="discard">下書きを消す</button>
   </section>
 
   <!-- 確認 -->
@@ -70,52 +70,57 @@
     <textarea id="review-md" rows="18" spellcheck="false"></textarea>
     <div id="review-entities" class="entities"></div>
     <div class="row">
-      <button id="btn-back">← 直す</button>
+      <button id="btn-back" data-i18n="back">← 直す</button>
       <button id="btn-download">.md を保存</button>
-      <button id="btn-commit" class="primary">GitHub にコミット</button>
+      <button id="btn-commit" class="primary" data-i18n="commit">GitHub にコミット</button>
     </div>
     <p id="commit-status" class="small"></p>
   </section>
 
   <!-- 完了 -->
   <section id="view-done" class="view hidden">
-    <h2>記録しました</h2>
+    <h2 data-i18n="doneTitle">記録しました</h2>
     <p id="done-summary"></p>
-    <p class="small">統計（人物・店・支出）の更新は、リポジトリ側の Claude Code で <code>/diary-ingest</code> を実行してください（このアプリは入口だけを担当します）。</p>
-    <button id="btn-again" class="primary">続けて書く</button>
+    <p class="small" data-i18n-html="doneNote">統計（人物・店・支出）の更新は、リポジトリ側の Claude Code で <code>/diary-ingest</code> を実行してください（このアプリは入口だけを担当します）。</p>
+    <button id="btn-again" class="primary" data-i18n="again">続けて書く</button>
   </section>
 </main>
 
 <footer>
-  <p><b>Life Log</b> は <a href="https://github.com/vellumlabs" rel="noopener">Vellum Labs</a>（LLM が運営する小さなスタジオ）が作っています。サーバはありません。API キーと GitHub トークンはこの端末の localStorage にだけ保存され、通信先は Anthropic と GitHub だけです。コードは Claude Code（AI）で書きました。</p>
+  <p data-i18n-html="footer"><b>Life Log</b> は <a href="https://github.com/vellumlabs" rel="noopener">Vellum Labs</a>（LLM が運営する小さなスタジオ）が作っています。サーバはありません。API キーと GitHub トークンはこの端末の localStorage にだけ保存され、通信先は Anthropic と GitHub だけです。コードは Claude Code（AI）で書きました。</p>
 </footer>
 
 <dialog id="dlg-settings">
-  <h2>設定</h2>
+  <h2 data-i18n="settings">設定</h2>
   <form method="dialog" id="form-settings">
+    <label><span data-i18n="sLang">表示言語 / Language</span> <select id="s-lang">
+        <option value="auto" data-i18n="lAuto">自動（ブラウザに合わせる）</option>
+        <option value="ja">日本語</option>
+        <option value="en">English</option>
+      </select></label>
     <h3>Claude</h3>
-    <label>API キー <input type="password" id="s-key" autocomplete="off" placeholder="sk-ant-…"></label>
-    <label>モデル
+    <label><span data-i18n="sKey">API キー</span> <input type="password" id="s-key" autocomplete="off" placeholder="sk-ant-…"></label>
+    <label><span data-i18n="sModel">モデル</span>
       <select id="s-model">
-        <option value="claude-opus-5-5">claude-opus-5-5（既定・精度重視）</option>
-        <option value="claude-sonnet-5-5">claude-sonnet-5-5（速い・安い）</option>
-        <option value="claude-haiku-4-5">claude-haiku-4-5（最安）</option>
+        <option value="claude-opus-5-5" data-i18n="mOpus">claude-opus-5-5（既定・精度重視）</option>
+        <option value="claude-sonnet-5-5" data-i18n="mSonnet">claude-sonnet-5-5（速い・安い）</option>
+        <option value="claude-haiku-4-5" data-i18n="mHaiku">claude-haiku-4-5（最安）</option>
       </select>
     </label>
-    <h3>GitHub（任意。無ければ .md を端末に保存）</h3>
-    <label>リポジトリ <input type="text" id="s-repo" placeholder="owner/ai-diary"></label>
-    <label>ブランチ <input type="text" id="s-branch" placeholder="main"></label>
-    <label>Personal Access Token（contents: write） <input type="password" id="s-gh" autocomplete="off" placeholder="github_pat_…"></label>
-    <h3>日記の規約</h3>
-    <label>リポジトリの形式 <select id="s-format">
-        <option value="ai-diary">ai-diary 型（日本語・円）</option>
-        <option value="kit">Kit Pro の life log（英語・$）</option>
+    <h3 data-i18n="sGhHead">GitHub（任意。無ければ .md を端末に保存）</h3>
+    <label><span data-i18n="sRepo">リポジトリ</span> <input type="text" id="s-repo" data-i18n-ph="repoPh" placeholder="owner/ai-diary"></label>
+    <label><span data-i18n="sBranch">ブランチ</span> <input type="text" id="s-branch" placeholder="main"></label>
+    <label><span data-i18n="sToken">Personal Access Token（contents: write）</span> <input type="password" id="s-gh" autocomplete="off" placeholder="github_pat_…"></label>
+    <h3 data-i18n="sRulesHead">日記の規約</h3>
+    <label><span data-i18n="sFormat">リポジトリの形式</span> <select id="s-format">
+        <option value="ai-diary" data-i18n="fAiDiary">ai-diary 型（日本語・円）</option>
+        <option value="kit" data-i18n="fKit">Kit Pro の life log（英語・$）</option>
       </select></label>
-    <label>追加の指示（任意） <textarea id="s-rules" rows="3" placeholder="例: 猫の名前は『みけ』。会社名は書かない。"></textarea></label>
-    <p class="small">規約の本体（常体・簡潔、充実度、支出テーブル、エンティティへの相対リンク）はアプリに組み込み済みです。リポジトリの <code>stats/*/index.md</code>（Kit 形式は <code>wiki/*/index.md</code>）から既存の人物・店・場所などの名前を読み取り、同じ名前にリンクします。</p>
+    <label><span data-i18n="sRules">追加の指示（任意）</span> <textarea id="s-rules" rows="3" data-i18n-ph="sRulesPh" placeholder="例: 猫の名前は『みけ』。会社名は書かない。"></textarea></label>
+    <p class="small" data-i18n-html="sRulesNote">規約の本体（常体・簡潔、充実度、支出テーブル、エンティティへの相対リンク）はアプリに組み込み済みです。リポジトリの <code>stats/*/index.md</code>（Kit 形式は <code>wiki/*/index.md</code>）から既存の人物・店・場所などの名前を読み取り、同じ名前にリンクします。</p>
     <div class="row">
-      <button type="button" id="btn-test-gh">GitHub 接続を確認</button>
-      <button class="primary" value="ok">保存</button>
+      <button type="button" id="btn-test-gh" data-i18n="testGh">GitHub 接続を確認</button>
+      <button class="primary" value="ok" data-i18n="save">保存</button>
     </div>
     <p id="settings-status" class="small"></p>
   </form>

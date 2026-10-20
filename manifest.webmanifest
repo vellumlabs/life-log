@@ -1,7 +1,7 @@
 {
   "name": "Life Log",
   "short_name": "Life Log",
-  "description": "話す・撮る・書く。Claude が日記リポジトリの規約で Markdown にして GitHub にコミットする。",
+  "description": "Talk, snap, type: Claude turns it into a Markdown diary entry and commits it to your GitHub repo. 話す・撮る・書く。Claude が日記リポジトリの規約で Markdown にして GitHub にコミットする。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

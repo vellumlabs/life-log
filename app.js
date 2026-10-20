@@ -3,14 +3,34 @@
 import { systemPrompt, outputSchema } from './prompt.js';
 import { fmt, CATS, diaryPath, entryNo, indexPath, dayOfWeek, parseKnown, parseSpendCats, imageFile, money } from './format.js';
 import { joinSegments, rebase } from './voice.js';
+import { pickLang, tr, locale } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
 const LS = 'life-log:v1';
 const load = () => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } };
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(S)); } catch {} };
-const S = Object.assign({ key: '', model: 'claude-opus-5-5', repo: '', branch: 'main', gh: '', rules: '', format: 'ai-diary', spendCats: null, known: null, knownAt: 0, days: {} }, load());
+// First run in an English browser defaults to the Kit (English) format; saved settings always win.
+const FIRST_FORMAT = localStorage.getItem(LS) === null && pickLang('auto', navigator.languages || [navigator.language]) === 'en' ? 'kit' : 'ai-diary';
+const S = Object.assign({ key: '', model: 'claude-opus-5-5', repo: '', branch: 'main', gh: '', rules: '', format: FIRST_FORMAT, lang: 'auto', spendCats: null, known: null, knownAt: 0, days: {} }, load());
 const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const MOCK = new URLSearchParams(location.search).has('mock');
+
+// ---------- UI language (i18n.js). Independent of the repository format. ----------
+let L = pickLang(S.lang, navigator.languages || [navigator.language]);
+const t = (key, vars) => tr(L, key, vars);
+function applyLang() {
+  L = pickLang(S.lang, navigator.languages || [navigator.language]);
+  document.documentElement.lang = L;
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll('[data-i18n-html]')) el.innerHTML = t(el.dataset.i18nHtml); // our own static strings only
+  for (const el of document.querySelectorAll('[data-i18n-ph]')) el.placeholder = t(el.dataset.i18nPh);
+  for (const el of document.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
+  for (const el of document.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+  if (recOn) $('#btn-mic').textContent = t('micStop');
+  if (!SR) $('#mic-status').textContent = t('micUnsupported');
+  renderStreak(); estimate();
+  if (draft && !$('#view-review').classList.contains('hidden')) { draft.markdown = $('#review-md').value; showReview(); }
+}
 
 let images = []; // {name, dataUrl, b64, mime}
 let draft = null; // {date, markdown, meta, path, sha, imageFiles:[{path,b64}]}
@@ -38,33 +58,33 @@ async function restore() {
   if (!d) return;
   $('#date').value = d.date || todayKey(); $('#text').value = d.text || ''; $('#fulfill').value = d.fulfill ?? 70; $('#fulfill-skip').checked = !!d.skip; fulfillUI();
   images = d.images || []; renderThumbs();
-  const when = new Date(d.at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  if (d.review) { draft = d.review; showReview(); $('#commit-status').textContent = `${when} の確認待ちを復元しました。` + $('#commit-status').textContent; }
-  else $('#compose-status').textContent = `${when} の下書きを復元しました${images.length ? `（写真 ${images.length} 枚）` : ''}`;
+  const when = new Date(d.at).toLocaleString(locale(L), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  if (d.review) { draft = d.review; showReview(); $('#commit-status').textContent = t('restoredReview', { when }) + $('#commit-status').textContent; }
+  else $('#compose-status').textContent = t('restoredDraft', { when }) + (images.length ? t('restoredPhotos', { n: images.length }) : '');
   $('#btn-discard').classList.remove('hidden');
 }
 function clearDraft() { clearTimeout(persistTimer); idb('readwrite', (st) => st.delete('draft')).catch(() => {}); $('#btn-discard').classList.add('hidden'); }
 
 // ---------- settings ----------
 function openSettings() {
-  $('#s-key').value = S.key; $('#s-model').value = S.model; $('#s-repo').value = S.repo; $('#s-branch').value = S.branch; $('#s-gh').value = S.gh; $('#s-rules').value = S.rules; $('#s-format').value = S.format;
+  $('#s-key').value = S.key; $('#s-model').value = S.model; $('#s-repo').value = S.repo; $('#s-branch').value = S.branch; $('#s-gh').value = S.gh; $('#s-rules').value = S.rules; $('#s-format').value = S.format; $('#s-lang').value = S.lang;
   $('#settings-status').textContent = '';
   $('#dlg-settings').showModal();
 }
 $('#btn-settings').addEventListener('click', openSettings);
 $('#form-settings').addEventListener('submit', () => {
   const repoChanged = S.repo !== $('#s-repo').value.trim() || S.format !== $('#s-format').value;
-  S.format = $('#s-format').value;
+  S.format = $('#s-format').value; S.lang = $('#s-lang').value;
   S.key = $('#s-key').value.trim(); S.model = $('#s-model').value; S.repo = $('#s-repo').value.trim(); S.branch = $('#s-branch').value.trim() || 'main'; S.gh = $('#s-gh').value.trim(); S.rules = $('#s-rules').value.trim();
   if (repoChanged) { S.known = null; S.knownAt = 0; S.spendCats = null; }
-  save(); estimate();
+  save(); applyLang();
 });
 $('#btn-test-gh').addEventListener('click', async () => {
-  const st = $('#settings-status'); st.textContent = '確認中…';
+  const st = $('#settings-status'); st.textContent = t('checking');
   try {
     const r = await gh(`/repos/${$('#s-repo').value.trim()}`, { token: $('#s-gh').value.trim() });
-    st.textContent = `OK: ${r.full_name}（既定ブランチ ${r.default_branch}、${r.permissions?.push ? '書き込み可' : '書き込み不可'}）`;
-  } catch (e) { st.textContent = `失敗: ${e.message}`; }
+    st.textContent = t('ghOk', { name: r.full_name, branch: r.default_branch, push: t(r.permissions?.push ? 'canPush' : 'cannotPush') });
+  } catch (e) { st.textContent = t('failed', { e: e.message }); }
 });
 
 // ---------- GitHub ----------
@@ -108,8 +128,8 @@ function addFiles(files) {
 }
 function renderThumbs() {
   estimate();
-  const t = $('#thumbs'); t.innerHTML = '';
-  images.forEach((im, i) => { const d = document.createElement('div'); d.className = 'thumb'; d.innerHTML = `<img src="${im.dataUrl}" alt=""><button type="button" aria-label="削除">×</button>`; d.querySelector('button').onclick = () => { images.splice(i, 1); renderThumbs(); persist(); }; t.appendChild(d); });
+  const box = $('#thumbs'); box.innerHTML = '';
+  images.forEach((im, i) => { const d = document.createElement('div'); d.className = 'thumb'; d.innerHTML = `<img src="${im.dataUrl}" alt=""><button type="button" aria-label="${t('removePhoto')}">×</button>`; d.querySelector('button').onclick = () => { images.splice(i, 1); renderThumbs(); persist(); }; box.appendChild(d); });
 }
 $('#file-camera').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
 $('#file-pick').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
@@ -117,28 +137,29 @@ $('#file-pick').addEventListener('change', (e) => { addFiles(e.target.files); e.
 // ---------- voice ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, recOn = false;
-if (!SR) { $('#btn-mic').disabled = true; $('#mic-status').textContent = 'このブラウザは音声入力に非対応です（Safari / Chrome を使ってください）'; }
+if (!SR) { $('#btn-mic').disabled = true; $('#mic-status').textContent = t('micUnsupported'); }
 $('#btn-mic').addEventListener('click', () => {
   if (recOn) { rec.stop(); return; }
-  rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = true;
+  rec = new SR(); const vl = L; rec.lang = locale(vl); rec.continuous = true; rec.interimResults = true;
   const ta = $('#text'); const segs = []; // per result index: { text, final, start, end }
   let base = ta.value, sep = base ? '\n' : '', from = 0, shown = base;
+  const glue = (b) => (vl === 'en' && b && !/\s$/.test(b) ? ' ' : ''); // English: keep a space between the user's text and new speech
   rec.onresult = (e) => {
-    if (ta.value !== shown) { ({ base, from } = rebase(ta.value, segs, from)); sep = ''; } // typed while recording: keep it
+    if (ta.value !== shown) { ({ base, from } = rebase(ta.value, segs, from, vl)); sep = glue(base); } // typed while recording: keep it
     const now = Date.now();
     for (let i = 0; i < e.results.length; i++) {
       const r = e.results[i], s = segs[i] || (segs[i] = { start: now, end: null });
       s.text = r[0].transcript; s.final = r.isFinal; if (r.isFinal && s.end == null) s.end = now;
     }
-    const out = joinSegments(segs.slice(from));
+    const out = joinSegments(segs.slice(from), 3000, vl);
     const focused = document.activeElement === ta, a = ta.selectionStart, b = ta.selectionEnd;
     ta.value = shown = base + (out && base ? sep : '') + out;
     if (focused && b <= base.length) ta.setSelectionRange(a, b); // caret stays where the user was typing
     persist(); estimate();
   };
-  rec.onend = () => { recOn = false; $('#btn-mic').classList.remove('on'); $('#btn-mic').textContent = '🎙 話す'; $('#mic-status').textContent = ''; };
-  rec.onerror = (e) => { $('#mic-status').textContent = `音声エラー: ${e.error}`; };
-  rec.start(); recOn = true; $('#btn-mic').classList.add('on'); $('#btn-mic').textContent = '■ 止める'; $('#mic-status').textContent = '聞いています…';
+  rec.onend = () => { recOn = false; $('#btn-mic').classList.remove('on'); $('#btn-mic').textContent = t('mic'); $('#mic-status').textContent = ''; };
+  rec.onerror = (e) => { $('#mic-status').textContent = t('micError', { e: e.error }); };
+  rec.start(); recOn = true; $('#btn-mic').classList.add('on'); $('#btn-mic').textContent = t('micStop'); $('#mic-status').textContent = t('micListening');
 });
 
 // ---------- cost estimate (shown before sending; rough, no API call) ----------
@@ -155,8 +176,10 @@ function estimate() {
   const tin = Math.round((sys + txt) * 1.2) + img + 200;
   const lo = 1500 + Math.round(txt * 1.2), hi = 4000 + Math.round(txt * 2.4);
   const usd = (o) => (tin * pin + o * pout) / 1e6;
-  const f = (d) => (d * YEN < 1 ? '1円未満' : `約${Math.round(d * YEN)}円`);
-  el.textContent = `費用の目安: ${f(usd(lo))}〜${f(usd(hi)).replace('約', '')}（$${usd(lo).toFixed(3)}〜${usd(hi).toFixed(3)}、${S.model}、入力 約${tin.toLocaleString('ja-JP')} トークン${images.length ? `・写真 ${images.length} 枚` : ''}、1$=${YEN}円）`;
+  const photos = images.length ? t('costPhotos', { n: images.length }) : '', model = S.model, tok = tin.toLocaleString(locale(L));
+  if (L === 'en') { const f = (d) => (d < 0.01 ? t('costLess1') : t('costAbout', { n: d.toFixed(3) })); el.textContent = t('cost', { lo: f(usd(lo)), hi: f(usd(hi)), model, tin: tok, photos }); return; }
+  const f = (d) => (d * YEN < 1 ? t('costLess1') : t('costAbout', { n: Math.round(d * YEN) }));
+  el.textContent = t('cost', { lo: f(usd(lo)), hi: f(usd(hi)).replace('約', ''), ulo: usd(lo).toFixed(3), uhi: usd(hi).toFixed(3), model, tin: tok, photos, yen: YEN });
 }
 $('#text').addEventListener('input', estimate);
 
@@ -169,12 +192,12 @@ $('#fulfill-skip').addEventListener('change', persist);
 // ---------- Claude ----------
 async function callClaude({ system, userBlocks }) {
   if (MOCK) return mockResponse();
-  if (!S.key) throw new Error('Claude の API キーを設定してください（⚙）');
+  if (!S.key) throw new Error(t('needKey'));
   const body = { model: S.model, max_tokens: 8000, system, messages: [{ role: 'user', content: userBlocks }], output_config: { format: { type: 'json_schema', schema: outputSchema } } };
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': S.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`Claude ${r.status}: ${(await r.text()).slice(0, 300)}`);
   const m = await r.json();
-  if (m.stop_reason === 'refusal') throw new Error('Claude がこの内容の処理を拒否しました。表現を変えて試してください。');
+  if (m.stop_reason === 'refusal') throw new Error(t('refusal'));
   const text = m.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
   try { return JSON.parse(text); } catch { const i = text.indexOf('{'), j = text.lastIndexOf('}'); return JSON.parse(text.slice(i, j + 1)); }
 }
@@ -191,11 +214,11 @@ function mockResponse() {
 $('#btn-compose').addEventListener('click', async () => {
   const st = $('#compose-status'); const btn = $('#btn-compose');
   const date = $('#date').value; const text = $('#text').value.trim();
-  if (!date) { st.textContent = '日付を選んでください'; return; }
-  if (!text && !images.length) { st.textContent = '何か書くか、写真を付けてください'; return; }
+  if (!date) { st.textContent = t('needDate'); return; }
+  if (!text && !images.length) { st.textContent = t('needInput'); return; }
   btn.disabled = true;
   try {
-    st.textContent = '既存の名前と同日のファイルを確認中…';
+    st.textContent = t('readingRepo');
     const known = await loadKnown();
     const kit = S.format === 'kit';
     // ai-diary merges into the day's file; kit's raw/ is immutable, so the next free YYYY-MM-DD-N.md is used.
@@ -213,7 +236,7 @@ $('#btn-compose').addEventListener('click', async () => {
     userBlocks.push({ type: 'text', text: kit
       ? `Date: ${date} (${dow})\nFulfillment: ${fulfill === null ? 'not given' : fulfill}\n\nThe owner's account of the day:\n${text || '(no text; record from the images)'}${earlier.length ? `\n\nEntries already committed for this day (immutable; write only what is new):\n${earlier.join('\n\n---\n\n')}` : ''}`
       : `日付: ${date} (${dow})\n充実度: ${fulfill === null ? '記録しない' : fulfill}\n\n今日あったこと:\n${text || '（文章なし。画像から記録する）'}${existing ? `\n\n同日の既存ファイル（統合して書き直す）:\n${existing.text}` : ''}` });
-    st.textContent = `Claude（${S.model}）が日記にしています…`;
+    st.textContent = t('composing', { model: S.model });
     const meta = await callClaude({ system: systemPrompt({ known, extraRules: S.rules, format: S.format, spendCats: S.spendCats }), userBlocks });
     // resolve image placeholders to paths
     const imageFiles = [];
@@ -226,7 +249,7 @@ $('#btn-compose').addEventListener('click', async () => {
     });
     draft = { date, markdown: md, meta, path, sha: existing?.sha || null, format: S.format, imageFiles };
     showReview(); persist();
-  } catch (e) { st.textContent = `失敗: ${e.message}`; }
+  } catch (e) { st.textContent = t('failed', { e: e.message }); }
   finally { btn.disabled = false; }
 });
 
@@ -234,14 +257,14 @@ function showReview() {
   $('#review-path').textContent = draft.path;
   const extra = entryNo(draft.path) > 1;
   $('#review-merge').classList.toggle('hidden', !draft.sha && !extra);
-  $('#review-merge').textContent = extra ? '同日の既存の日記は変えずに追加分として新規作成' : '同日の既存ファイルに統合';
+  $('#review-merge').textContent = t(extra ? 'extraTag' : 'mergeTag');
   $('#review-md').value = draft.markdown;
   const q = $('#review-questions'); const qs = (draft.meta.questions || []).filter(Boolean);
-  q.classList.toggle('hidden', !qs.length); q.innerHTML = qs.length ? `要確認:<ul>${qs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
-  $('#review-entities').innerHTML = (draft.meta.entities || []).map((e) => `<span class="${e.isNew ? 'new' : ''}">${esc(e.category)}: ${esc(e.name)}${e.isNew ? '（新規）' : ''}</span>`).join('') + (draft.meta.expenses_total ? `<span>支出 ${money(draft.format, draft.meta.expenses_total)}</span>` : '');
-  $('#commit-status').textContent = S.repo && S.gh ? `→ ${S.repo}@${S.branch}` : 'GitHub が未設定なので .md を端末に保存できます';
+  q.classList.toggle('hidden', !qs.length); q.innerHTML = qs.length ? `${esc(t('questions'))}<ul>${qs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+  $('#review-entities').innerHTML = (draft.meta.entities || []).map((e) => `<span class="${e.isNew ? 'new' : ''}">${esc(e.category)}: ${esc(e.name)}${e.isNew ? esc(t('isNew')) : ''}</span>`).join('') + (draft.meta.expenses_total ? `<span>${esc(t('spend', { v: money(draft.format, draft.meta.expenses_total) }))}</span>` : '');
+  $('#commit-status').textContent = S.repo && S.gh ? t('target', { repo: S.repo, branch: S.branch }) : t('noGh');
   $('#btn-commit').disabled = !(S.repo && S.gh);
-  $('#btn-download').textContent = navigator.canShare && matchMedia('(pointer: coarse)').matches ? '共有・保存' : '.md を保存';
+  $('#btn-download').textContent = navigator.canShare && matchMedia('(pointer: coarse)').matches ? t('share') : t('saveMd');
   show('review');
 }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -259,25 +282,25 @@ function shareableFiles(md) {
 $('#btn-download').addEventListener('click', async () => {
   const md = $('#review-md').value; const files = shareableFiles(md);
   if (files) {
-    try { await navigator.share({ files, title: draft.path.split('/').pop() }); markDone(`共有シートで保存しました（${files.length} ファイル）`); return; }
-    catch (e) { if (e.name === 'AbortError') { $('#commit-status').textContent = '共有を取り消しました（下書きは残っています）'; return; } }
+    try { await navigator.share({ files, title: draft.path.split('/').pop() }); markDone(t('shared', { n: files.length })); return; }
+    catch (e) { if (e.name === 'AbortError') { $('#commit-status').textContent = t('shareCancelled'); return; } }
   }
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.download = draft.path.split('/').pop(); a.click();
   draft.imageFiles.forEach((f, i) => { const b = document.createElement('a'); b.href = `data:image/jpeg;base64,${f.b64}`; b.download = f.path.split('/').pop(); setTimeout(() => b.click(), 200 * (i + 1)); });
-  markDone('端末に保存しました');
+  markDone(t('saved'));
 });
 $('#btn-commit').addEventListener('click', async () => {
   const st = $('#commit-status'); const btn = $('#btn-commit'); btn.disabled = true;
   try {
     // ai-diary: the marker tells diary-ingest what to pick up. kit: raw/ is immutable, so life-ingest finds entries without a [day] line in wiki/log.md.
     const raw = $('#review-md').value; const md = fmt(draft.format).marker && !md_has_marker(raw) ? `${raw}\n\n<!-- life-log-app: pending-stats -->\n` : raw.replace(/\s*$/, '\n');
-    for (const f of draft.imageFiles) { st.textContent = `画像をコミット中… ${f.path}`; const ex = await gh(`/repos/${S.repo}/contents/${encodeURI(f.path)}?ref=${S.branch}`); await ghPutFile(f.path, f.b64, `diary: ${draft.date} (image)`, ex?.sha); }
-    st.textContent = '日記をコミット中…';
+    for (const f of draft.imageFiles) { st.textContent = t('committingImg', { path: f.path }); const ex = await gh(`/repos/${S.repo}/contents/${encodeURI(f.path)}?ref=${S.branch}`); await ghPutFile(f.path, f.b64, `diary: ${draft.date} (image)`, ex?.sha); }
+    st.textContent = t('committing');
     const cur = await ghGetFile(draft.path); // re-read sha in case it changed
-    if (cur && !fmt(draft.format).merge) throw new Error(`${draft.path} が既にあります（raw は上書きしません）。「戻る」→ もう一度「Claude で日記にする」で次の番号になります`);
+    if (cur && !fmt(draft.format).merge) throw new Error(t('exists', { path: draft.path }));
     const r = await ghPutFile(draft.path, utf8b64(md), `${draft.format === 'kit' ? 'raw' : 'diary'}: ${draft.date}`, cur?.sha);
-    markDone(`${S.repo} に ${draft.path} をコミットしました（${r.commit.sha.slice(0, 7)}）`);
-  } catch (e) { st.textContent = `失敗: ${e.message}`; btn.disabled = false; }
+    markDone(t('committed', { repo: S.repo, path: draft.path, sha: r.commit.sha.slice(0, 7) }));
+  } catch (e) { st.textContent = t('failed', { e: e.message }); btn.disabled = false; }
 });
 const md_has_marker = (s) => s.includes('life-log-app: pending-stats');
 function markDone(msg) {
@@ -286,20 +309,19 @@ function markDone(msg) {
 }
 const resetCapture = () => { $('#text').value = ''; images = []; renderThumbs(); draft = null; $('#compose-status').textContent = ''; show('capture'); };
 $('#btn-again').addEventListener('click', resetCapture);
-$('#btn-discard').addEventListener('click', () => { if (confirm('下書き（文章・写真・確認待ちの日記）を消しますか？')) { clearDraft(); resetCapture(); $('#date').value = todayKey(); } });
+$('#btn-discard').addEventListener('click', () => { if (confirm(t('discardConfirm'))) { clearDraft(); resetCapture(); $('#date').value = todayKey(); } });
 
 function renderStreak() {
   const keys = Object.keys(S.days).sort(); let cur = 0, prev = null;
   for (const k of keys) { const d = new Date(k + 'T12:00:00'); if (prev && (d - prev) / 86400000 === 1) cur++; else cur = 1; prev = d; }
   const last = keys[keys.length - 1]; const today = todayKey();
   if (last && last !== today) { const y = new Date(today + 'T12:00:00'); y.setDate(y.getDate() - 1); if (last !== `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`) cur = 0; }
-  $('#streak').textContent = cur ? `🔥 ${cur} 日連続` : '';
+  $('#streak').textContent = cur ? t('streak', { n: cur }) : '';
 }
 
 // ---------- init ----------
 $('#date').value = todayKey();
-renderStreak();
-estimate();
+applyLang();
 restore();
 if (!S.key && !MOCK) setTimeout(openSettings, 300);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
