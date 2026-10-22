@@ -26,12 +26,14 @@ export const parseSpendCats = (text) => [...(text || '').matchAll(/^\s*-\s*\[\[s
 export const kebab = (s) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
 
 // Where image i (0-based) goes, and the link to it from the diary file. entry = N of YYYY-MM-DD-N.md (kit), so a
-// second entry's images never overwrite the first's.
+// second entry's images never overwrite the first's. kit receipts: the Receipt: line links the transcription
+// raw/receipts/<name>.md (Kit convention; scripts/life-check.py reads its Total), which /life-ingest writes from the
+// image of the same name. Linking the .jpg itself would break life-check for good, since raw/ is never edited.
 export function imageFile(f, date, info, i, entry = 1) {
   const [y] = date.split('-'); const receipt = info?.kind === 'receipt'; const n = i ? `-${i + 1}` : '';
   if (f === 'kit') {
     const name = `${date}${entry > 1 ? `-${entry}` : ''}-${kebab(info?.slug) || (receipt ? 'receipt' : 'photo')}${n}.jpg`;
-    return receipt ? { path: `raw/receipts/images/${name}`, rel: `../../receipts/images/${name}` } : { path: `raw/diary/${y}/images/${name}`, rel: `images/${name}` };
+    return receipt ? { path: `raw/receipts/images/${name}`, rel: `../../receipts/${name.replace(/\.jpg$/, '.md')}` } : { path: `raw/diary/${y}/images/${name}`, rel: `images/${name}` };
   }
   const slug = (info?.slug || `写真${i + 1}`).replace(/[\\/:*?"<>|\s]+/g, '-').slice(0, 24);
   const name = `${date}-${receipt ? 'レシート-' : ''}${slug}${n}.jpg`;
