@@ -6,7 +6,7 @@
 
 👉 **https://vellumlabs.github.io/life-log/**
 
-> **English**: the app's UI is in Japanese or English and follows your browser (switch any time in ⚙ → *Language*). Voice input uses the same language. For an English diary in the [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro life-log layout, pick *Repository format → Kit Pro life log* (a first run in an English browser picks it for you), then run `/life-ingest` in the repo with Claude Code. Checked end to end on a copy of the Kit's finished life log (an invented day with a receipt photo, committed from the app in English → `/life-ingest` → `life-check.py` and `lint.py` both 0 findings; Claude and GitHub stubbed, 2026-10-22). The entry's `Receipt:` line points at the transcription `raw/receipts/<name>.md`, which `/life-ingest` writes from the photo.
+> **English**: the app's UI is in Japanese or English and follows your browser (switch any time in ⚙ → *Language*). Voice input uses the same language. For an English diary in the [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro life-log layout, pick *Repository format → Kit Pro life log* (a first run in an English browser picks it for you), then run `/life-ingest` in the repo with Claude Code. Checked end to end on a copy of the Kit's finished life log (an invented day with a receipt photo, committed from the app in English → `/life-ingest` → `life-check.py` and `lint.py` both 0 findings; the app's Claude and GitHub calls stubbed, 2026-10-22). On 2026-10-24 the ingest half was run by Claude Code itself with only the skill file (`claude -p "/life-ingest"`, Opus, about 1.5 minutes for one day): it transcribed the receipt, added the new person, updated 15 pages and left both checks at 0. The entry's `Receipt:` line points at the transcription `raw/receipts/<name>.md`, which `/life-ingest` writes from the photo.
 
 ```
 あなたのスマホ ──(Claude API キー)──▶ Anthropic   … 文章・音声・レシート画像を日記 Markdown に
@@ -40,7 +40,7 @@
 | **ai-diary 型**（既定） | `diary/YYYY/YYYY-MM-DD.md` | `stats/*/index.md` | 日本語・円 | 統合して書き直す | `skills/diary-ingest` |
 | **LLM Wiki Kit Pro の life log** | `raw/diary/YYYY/YYYY-MM-DD.md` | `wiki/*/index.md`（slug と一行説明）、支出カテゴリは `wiki/finance/index.md` | 英語・ドル | `-2.md` を新規作成（raw は不変） | `skills/life-ingest` |
 
-Kit 形式は [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro 収録の life log wiki（`schema/life-log-workflow.md` の 1 日分の書式）に合わせています。レシート画像は `raw/receipts/images/`、写真は `raw/diary/YYYY/images/` に置き、ファイル名は ASCII の kebab-case です。日記の `Receipt:` 行は Kit の書式どおり転記ファイル `raw/receipts/<同名>.md` を指し、取り込み時に Claude Code が画像から書き起こします（取り込み前は `life-check.py` が「receipt missing」と出します）。アプリは `raw/` だけを書き、`wiki/` の更新はリポジトリ側の Claude Code が `skills/life-ingest/SKILL.md` で行います（`wiki/log.md` に `[day]` 行の無い日記を取り込みます）。
+Kit 形式は [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro 収録の life log wiki（`schema/life-log-workflow.md` の 1 日分の書式）に合わせています。レシート画像は `raw/receipts/images/`、写真は `raw/diary/YYYY/images/` に置き、ファイル名は ASCII の kebab-case です。日記の `Receipt:` 行は Kit の書式どおり転記ファイル `raw/receipts/<同名>.md` を指し、取り込み時に Claude Code が画像から書き起こします（取り込み前は `life-check.py` が「receipt missing」と出します）。アプリは `raw/` だけを書き、`wiki/` の更新はリポジトリ側の Claude Code が `skills/life-ingest/SKILL.md` で行います（`wiki/log.md` に `[day]` 行の無い日記を取り込みます）。2026-10-24 に Kit の完成 wiki の複製で、Claude Code がスキルだけを読んで 1 日分（レシートの書き起こし・新しい人物・15 ページ更新）を約 1.5 分で取り込み、`life-check.py`・`lint.py` とも 0 件になることを確かめました。
 
 以下は ai-diary 型の構成です。
 
