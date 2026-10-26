@@ -4,6 +4,7 @@ import { systemPrompt, outputSchema } from './prompt.js';
 import { fmt, CATS, diaryPath, entryNo, indexPath, dayOfWeek, parseKnown, parseSpendCats, imageFile, money } from './format.js';
 import { joinSegments, rebase } from './voice.js';
 import { pickLang, tr, locale } from './i18n.js';
+import { exifDate, suggestDate } from './exif.js';
 
 const $ = (s) => document.querySelector(s);
 const LS = 'life-log:v1';
@@ -28,11 +29,11 @@ function applyLang() {
   for (const el of document.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
   if (recOn) $('#btn-mic').textContent = t('micStop');
   if (!SR) $('#mic-status').textContent = t('micUnsupported');
-  renderStreak(); estimate();
+  renderStreak(); estimate(); dateHint();
   if (draft && !$('#view-review').classList.contains('hidden')) { draft.markdown = $('#review-md').value; showReview(); }
 }
 
-let images = []; // {name, dataUrl, b64, mime}
+let images = []; // {name, dataUrl, b64, mime, w, h, taken: 'YYYY-MM-DD' from EXIF or null}
 let draft = null; // {date, markdown, meta, path, sha, imageFiles:[{path,b64}]}
 
 // ---------- draft persistence (IndexedDB: images can exceed the localStorage quota) ----------
@@ -115,19 +116,31 @@ async function loadKnown(force = false) {
 function addFiles(files) {
   for (const f of files) {
     const img = new Image(); const url = URL.createObjectURL(f);
-    img.onload = () => {
+    // EXIF is read from the original file (the canvas copy below has none). 128 KB covers APP1 in camera JPEGs.
+    const taken = f.slice(0, 131072).arrayBuffer().then(exifDate).catch(() => null);
+    img.onload = async () => {
       const max = 1600, sc = Math.min(1, max / Math.max(img.width, img.height));
       const cv = document.createElement('canvas'); cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
       cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
       const dataUrl = cv.toDataURL('image/jpeg', 0.85);
-      images.push({ name: f.name, dataUrl, b64: dataUrl.split(',')[1], mime: 'image/jpeg', w: cv.width, h: cv.height });
+      images.push({ name: f.name, dataUrl, b64: dataUrl.split(',')[1], mime: 'image/jpeg', w: cv.width, h: cv.height, taken: await taken });
       URL.revokeObjectURL(url); renderThumbs(); persist();
     };
     img.src = url;
   }
 }
+// Photos taken on another day (writing up yesterday the next morning): offer their date, never change it silently.
+function dateHint() {
+  const d = suggestDate(images.map((im) => im.taken), $('#date').value), el = $('#date-hint');
+  el.classList.toggle('hidden', !d); if (!d) return;
+  const n = images.filter((im) => im.taken === d).length;
+  el.querySelector('span').textContent = t('dateHint', { d, n }); el.querySelector('button').textContent = t('dateUse', { d });
+  el.dataset.d = d;
+}
+$('#btn-date-use').addEventListener('click', () => { $('#date').value = $('#date-hint').dataset.d; dateHint(); persist(); });
+$('#date').addEventListener('input', dateHint);
 function renderThumbs() {
-  estimate();
+  estimate(); dateHint();
   const box = $('#thumbs'); box.innerHTML = '';
   images.forEach((im, i) => { const d = document.createElement('div'); d.className = 'thumb'; d.innerHTML = `<img src="${im.dataUrl}" alt=""><button type="button" aria-label="${t('removePhoto')}">×</button>`; d.querySelector('button').onclick = () => { images.splice(i, 1); renderThumbs(); persist(); }; box.appendChild(d); });
 }
