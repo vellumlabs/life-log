@@ -45,14 +45,14 @@ const idb = (mode, fn) => new Promise((res, rej) => {
   o.onsuccess = () => { const tx = o.result.transaction('kv', mode); const r = fn(tx.objectStore('kv')); tx.oncomplete = () => res(r?.result); tx.onerror = () => rej(tx.error); };
 });
 let persistTimer = 0;
-function persist() {
+function persist(delay) {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    const d = { date: $('#date').value, text: $('#text').value, fulfill: $('#fulfill').value, skip: $('#fulfill-skip').checked, images, review: draft && { ...draft, markdown: $('#view-review').classList.contains('hidden') ? draft.markdown : $('#review-md').value }, at: Date.now() };
+    const d = { date: $('#date').value, text: $('#text').value, fulfill: $('#fulfill').value, skip: $('#fulfill-skip').checked, images, review: draft && { ...draft, markdown: $('#view-review').classList.contains('hidden') ? draft.markdown : $('#review-md').value }, wait: waiting, at: Date.now() };
     const empty = !d.text.trim() && !images.length && !draft;
     idb('readwrite', (st) => (empty ? st.delete('draft') : st.put(d, 'draft'))).catch(() => {});
     $('#btn-discard').classList.toggle('hidden', empty);
-  }, 300);
+  }, typeof delay === 'number' ? delay : 300); // listeners pass an Event: debounce
 }
 async function restore() {
   let d; try { d = await idb('readonly', (st) => st.get('draft')); } catch { return; }
@@ -63,6 +63,7 @@ async function restore() {
   if (d.review) { draft = d.review; showReview(); $('#commit-status').textContent = t('restoredReview', { when }) + $('#commit-status').textContent; }
   else $('#compose-status').textContent = t('restoredDraft', { when }) + (images.length ? t('restoredPhotos', { n: images.length }) : '');
   $('#btn-discard').classList.remove('hidden');
+  if (d.wait && (d.wait === 'compose' || d.review)) { if (offline()) hold(d.wait); else resume(d.wait); }
 }
 function clearDraft() { clearTimeout(persistTimer); idb('readwrite', (st) => st.delete('draft')).catch(() => {}); $('#btn-discard').classList.add('hidden'); }
 
@@ -202,6 +203,18 @@ $('#fulfill').addEventListener('input', fulfillUI); $('#fulfill-skip').addEventL
 for (const id of ['#text', '#date', '#fulfill', '#fulfill-skip', '#review-md']) $(id).addEventListener('input', persist);
 $('#fulfill-skip').addEventListener('change', persist);
 
+// ---------- offline: hold the Claude call / the commit until the connection returns (like a mail outbox) ----------
+// Only the intent is kept (in the persisted draft); the request is rebuilt from the form when it runs, so edits made while waiting count.
+let waiting = null; // null | 'compose' | 'commit'
+const offline = () => navigator.onLine === false;
+function hold(kind) {
+  waiting = kind; persist(0);
+  $(kind === 'compose' ? '#compose-status' : '#commit-status').textContent = t(kind === 'compose' ? 'heldCompose' : 'heldCommit');
+}
+function resume(kind) { waiting = null; persist(0); $(kind === 'compose' ? '#btn-compose' : '#btn-commit').click(); }
+window.addEventListener('online', () => { if (waiting) resume(waiting); });
+window.addEventListener('offline', () => { if (!waiting) { const v = $('#view-review').classList.contains('hidden') ? 'compose-status' : 'commit-status'; if (!$(`#${v}`).textContent.trim()) $(`#${v}`).textContent = t('offlineNote'); } });
+
 // ---------- Claude ----------
 async function callClaude({ system, userBlocks }) {
   if (MOCK) return mockResponse();
@@ -229,6 +242,7 @@ $('#btn-compose').addEventListener('click', async () => {
   const date = $('#date').value; const text = $('#text').value.trim();
   if (!date) { st.textContent = t('needDate'); return; }
   if (!text && !images.length) { st.textContent = t('needInput'); return; }
+  if (offline()) { hold('compose'); return; }
   btn.disabled = true;
   try {
     st.textContent = t('readingRepo');
@@ -262,7 +276,7 @@ $('#btn-compose').addEventListener('click', async () => {
     });
     draft = { date, markdown: md, meta, path, sha: existing?.sha || null, format: S.format, imageFiles };
     showReview(); persist();
-  } catch (e) { st.textContent = t('failed', { e: e.message }); }
+  } catch (e) { if (offline()) hold('compose'); else st.textContent = t('failed', { e: e.message }); }
   finally { btn.disabled = false; }
 });
 
@@ -283,7 +297,7 @@ function showReview() {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function show(name) { for (const v of document.querySelectorAll('.view')) v.classList.add('hidden'); $(`#view-${name}`).classList.remove('hidden'); window.scrollTo(0, 0); }
 
-$('#btn-back').addEventListener('click', () => { draft.markdown = $('#review-md').value; show('capture'); persist(); });
+$('#btn-back').addEventListener('click', () => { waiting = null; draft.markdown = $('#review-md').value; show('capture'); persist(); });
 // iOS/Android: one share sheet with the .md and all images (Web Share API level 2). Desktop or unsupported: downloads.
 const b64File = (b64, name) => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new File([u], name, { type: 'image/jpeg' }); };
 function shareableFiles(md) {
@@ -303,7 +317,9 @@ $('#btn-download').addEventListener('click', async () => {
   markDone(t('saved'));
 });
 $('#btn-commit').addEventListener('click', async () => {
-  const st = $('#commit-status'); const btn = $('#btn-commit'); btn.disabled = true;
+  const st = $('#commit-status'); const btn = $('#btn-commit');
+  if (offline()) { hold('commit'); return; }
+  btn.disabled = true;
   try {
     // ai-diary: the marker tells diary-ingest what to pick up. kit: raw/ is immutable, so life-ingest finds entries without a [day] line in wiki/log.md.
     const raw = $('#review-md').value; const md = fmt(draft.format).marker && !md_has_marker(raw) ? `${raw}\n\n<!-- life-log-app: pending-stats -->\n` : raw.replace(/\s*$/, '\n');
@@ -313,14 +329,14 @@ $('#btn-commit').addEventListener('click', async () => {
     if (cur && !fmt(draft.format).merge) throw new Error(t('exists', { path: draft.path }));
     const r = await ghPutFile(draft.path, utf8b64(md), `${draft.format === 'kit' ? 'raw' : 'diary'}: ${draft.date}`, cur?.sha);
     markDone(t('committed', { repo: S.repo, path: draft.path, sha: r.commit.sha.slice(0, 7) }));
-  } catch (e) { st.textContent = t('failed', { e: e.message }); btn.disabled = false; }
+  } catch (e) { if (offline()) hold('commit'); else st.textContent = t('failed', { e: e.message }); btn.disabled = false; }
 });
 const md_has_marker = (s) => s.includes('life-log-app: pending-stats');
 function markDone(msg) {
   S.days[draft.date] = Date.now(); save(); clearDraft();
   $('#done-summary').textContent = msg; renderStreak(); show('done');
 }
-const resetCapture = () => { $('#text').value = ''; images = []; renderThumbs(); draft = null; $('#compose-status').textContent = ''; show('capture'); };
+const resetCapture = () => { waiting = null; $('#text').value = ''; images = []; renderThumbs(); draft = null; $('#compose-status').textContent = ''; show('capture'); };
 $('#btn-again').addEventListener('click', resetCapture);
 $('#btn-discard').addEventListener('click', () => { if (confirm(t('discardConfirm'))) { clearDraft(); resetCapture(); $('#date').value = todayKey(); } });
 

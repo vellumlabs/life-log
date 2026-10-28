@@ -6,7 +6,7 @@
 
 👉 **https://vellumlabs.github.io/life-log/**
 
-> **English**: the app's UI is in Japanese or English and follows your browser (switch any time in ⚙ → *Language*). Voice input uses the same language. For an English diary in the [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro life-log layout, pick *Repository format → Kit Pro life log* (a first run in an English browser picks it for you), then run `/life-ingest` in the repo with Claude Code. Checked end to end on a copy of the Kit's finished life log (an invented day with a receipt photo, committed from the app in English → `/life-ingest` → `life-check.py` and `lint.py` both 0 findings; the app's Claude and GitHub calls stubbed, 2026-10-22). On 2026-10-24 the ingest half was run by Claude Code itself with only the skill file (`claude -p "/life-ingest"`, Opus, about 1.5 minutes for one day): it transcribed the receipt, added the new person, updated 15 pages and left both checks at 0. The entry's `Receipt:` line points at the transcription `raw/receipts/<name>.md`, which `/life-ingest` writes from the photo. If you add photos taken on another day (last night's photos, written up the next morning), the app offers their capture date from the JPEG's EXIF (*Use 2026-10-25*); it never changes the date on its own. Photos are redrawn as JPEG on the device before sending, so EXIF (time, location, camera) never reaches Claude or GitHub.
+> **English**: the app's UI is in Japanese or English and follows your browser (switch any time in ⚙ → *Language*). Voice input uses the same language. For an English diary in the [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro life-log layout, pick *Repository format → Kit Pro life log* (a first run in an English browser picks it for you), then run `/life-ingest` in the repo with Claude Code. Checked end to end on a copy of the Kit's finished life log (an invented day with a receipt photo, committed from the app in English → `/life-ingest` → `life-check.py` and `lint.py` both 0 findings; the app's Claude and GitHub calls stubbed, 2026-10-22). On 2026-10-24 the ingest half was run by Claude Code itself with only the skill file (`claude -p "/life-ingest"`, Opus, about 1.5 minutes for one day): it transcribed the receipt, added the new person, updated 15 pages and left both checks at 0. The entry's `Receipt:` line points at the transcription `raw/receipts/<name>.md`, which `/life-ingest` writes from the photo. If you add photos taken on another day (last night's photos, written up the next morning), the app offers their capture date from the JPEG's EXIF (*Use 2026-10-25*); it never changes the date on its own. Photos are redrawn as JPEG on the device before sending, so EXIF (time, location, camera) never reaches Claude or GitHub. Offline (subway, plane), *Write it up with Claude* and *Commit* are held and run by themselves when the connection returns, like a mail outbox; the held step survives closing the app.
 
 ```
 あなたのスマホ ──(Claude API キー)──▶ Anthropic   … 文章・音声・レシート画像を日記 Markdown に
@@ -110,7 +110,7 @@ Kit 形式の場合は `skills/life-ingest` を `<life-log リポジトリ>/.cla
 | 音声入力（SpeechRecognition） | ✅ | ✅ | ✅ | ❌（文章で入力） |
 | ホーム画面・オフラインの画面表示 | ✅ | ✅ | ✅ | — |
 
-オフラインでも画面の表示と下書きの保持はできます。送信・コミットには通信が必要です。
+オフラインでも画面の表示と下書きの保持はできます。オフラインで「Claude で日記にする」「コミット」を押すと保留になり、接続が戻ると自動で実行されます（メールの送信トレイと同じ。アプリを閉じても保留は下書きに残り、次に開いた時に実行されます。「戻る」「下書きを消す」で取り消し）。
 
 ## 開発
 
