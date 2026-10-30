@@ -90,7 +90,7 @@ cd <日記リポジトリ> && claude
 > /diary-ingest
 ```
 
-Kit 形式の場合は `skills/life-ingest` を `<life-log リポジトリ>/.claude/skills/life-ingest` に置き、`/life-ingest` を実行します。
+Kit 形式の場合は `skills/life-ingest` を `<life-log リポジトリ>/.claude/skills/life-ingest` に置いてコミットし（Kit の hook が未コミットのファイルを警告します）、`/life-ingest` を実行します。新しく作るページの `Also called:` には表題以外の呼び名だけを書きます（既存ページと同じ名は付けません。2026-10-30 に無人実走で確認）。
 
 ## プライバシーと費用
 
