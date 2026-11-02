@@ -20,6 +20,12 @@ export function parseKnown(f, text) {
   if (f === 'kit') return [...text.matchAll(/^\|\s*\[\[([^\]|]+)\]\][^\n]*\|\s*([^|\n]*?)\s*\|\s*$/gm)].map((m) => (m[2] ? `${m[1]} (${m[2]})` : m[1]));
   return [...text.matchAll(/^\|\s*\[([^\]]+)\]\(/gm)].map((m) => m[1]);
 }
+// kit: names on a page's "- Also called: Mom, Ellen" line (Kit resolves names by these; the index has only slugs).
+export const ALIAS_CATS = ['people', 'shops', 'places', 'activities'];
+export const parseAliases = (text) => { const m = String(text || '').match(/^-\s*Also called:\s*(.+)$/m); return m ? m[1].split(',').map((x) => x.trim()).filter(Boolean) : []; };
+// 'slug (one line)' + ['Mom', 'Ellen'] → 'slug (one line; also called: Mom, Ellen)'
+export const withAliases = (entry, aliases) => (!aliases?.length ? entry : /\)$/.test(entry) ? `${entry.slice(0, -1)}; also called: ${aliases.join(', ')})` : `${entry} (also called: ${aliases.join(', ')})`);
+export const knownSlug = (entry) => String(entry).split(' (')[0];
 // kit: spending categories from wiki/finance/index.md (- [[spend-dining]] — …)
 export const parseSpendCats = (text) => [...(text || '').matchAll(/^\s*-\s*\[\[spend-([a-z0-9-]+)\]\]/gm)].map((m) => m[1]);
 

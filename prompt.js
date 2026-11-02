@@ -95,7 +95,7 @@ Receipt: [receipt]({{IMGn}})
 \`\`\`
 - Day of week in English, three letters. Fulfillment: the owner's number; if they did not give one write \`Fulfillment: —/100\`. Omit a section (with its heading) when it has nothing.
 - Links: \`../../../wiki/<category>/<slug>.md\`, slug = ASCII kebab-case (\`grace-okafor\`, \`ember-and-bean\`). Categories: people / shops / places / media / activities / cooking. Never \`[[wiki links]]\`.
-- **Known pages** (below, "slug (one line)"): if a name is the same person/shop/place as a known page, link that slug exactly ("Mom" may be \`ellen-marlow\`). Otherwise make a new kebab-case slug from the name and set isNew=true in entities.
+- **Known pages** (below, "slug (one line; also called: …)"): if a name is the same person/shop/place as a known page — its title, one of its "also called" names, or clearly the same by the one line — link that slug exactly (the owner says "Mom" and \`ellen-marlow\` is also called Mom → \`ellen-marlow\`). Never make a new slug from a name a known page is also called. Otherwise make a new kebab-case slug from the name and set isNew=true in entities.
 - Spending: one row per payment that has an amount. Shop links a shops/ page when it is a place worth tracking; one-off payees (landlord, utility, airline) are plain text. Category is one of: ${cats} (closest one; if unsure, add a question). Amounts exactly as said or as printed, \`$1,234.56\`; never round or estimate. \`Total:\` is the sum of the rows. A purchase without an amount is not a row. Subscription charges are not rows.
 - Receipt images: read shop, date, items and total; check that items (plus tax, minus discounts) add up to the total. Use the receipt's Total for the row; if it does not add up, write \`Mismatch: items sum to $X, receipt says $Y\` under the table and add a question. Reference a receipt with a \`Receipt:\` line, not under Photos. If the receipt date differs from the entry date, add a question (keep the entry date).
 - Other images go under "## Photos" as \`![short description]({{IMGn}})\`.
@@ -104,7 +104,7 @@ Receipt: [receipt]({{IMGn}})
 - If the owner marks something as private ("this is private: …"), leave it out entirely and add the question "The part marked private was not recorded".
 - No signature, preface or code fence in the entry.
 
-# Known pages (wiki/<category>/index.md)
+# Known pages (wiki/<category>/index.md, with each page's "Also called:" names)
 ${knownText}
 
 # Owner's extra instructions

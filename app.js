@@ -1,7 +1,7 @@
 // Life Log — static PWA. Captures text / voice / images, asks Claude (BYOK, direct from the browser)
 // for an entry in the repo's format (ai-diary or LLM Wiki Kit life log, see format.js), and commits it to the user's GitHub repo (Contents API).
 import { systemPrompt, outputSchema } from './prompt.js';
-import { fmt, CATS, diaryPath, entryNo, indexPath, dayOfWeek, parseKnown, parseSpendCats, imageFile, money } from './format.js';
+import { fmt, CATS, ALIAS_CATS, diaryPath, entryNo, indexPath, dayOfWeek, parseKnown, parseAliases, withAliases, knownSlug, parseSpendCats, imageFile, money } from './format.js';
 import { joinSegments, rebase } from './voice.js';
 import { pickLang, tr, locale } from './i18n.js';
 import { exifDate, suggestDate } from './exif.js';
@@ -108,6 +108,13 @@ async function loadKnown(force = false) {
   await Promise.all(CATS.map(async (c) => {
     try { const f = await ghGetFile(indexPath(S.format, c)); known[c] = parseKnown(S.format, f?.text); } catch { known[c] = []; }
   }));
+  // kit: add each page's "Also called:" names (people/shops/places/activities), 8 requests at a time; a failed page just has none
+  if (S.format === 'kit') {
+    const jobs = ALIAS_CATS.flatMap((c) => (known[c] || []).map((e, i) => [c, i, `${fmt('kit').statsDir}/${c}/${knownSlug(e)}.md`]));
+    for (let j = 0; j < jobs.length; j += 8) await Promise.all(jobs.slice(j, j + 8).map(async ([c, i, p]) => {
+      try { known[c][i] = withAliases(known[c][i], parseAliases((await ghGetFile(p))?.text)); } catch { /* keep the slug */ }
+    }));
+  }
   if (S.format === 'kit') { try { S.spendCats = parseSpendCats((await ghGetFile(indexPath('kit', 'finance')))?.text); } catch { S.spendCats = null; } }
   S.known = known; S.knownAt = Date.now(); save();
   return known;
