@@ -1,7 +1,7 @@
 // Life Log — static PWA. Captures text / voice / images, asks Claude (BYOK, direct from the browser)
 // for an entry in the repo's format (ai-diary or LLM Wiki Kit life log, see format.js), and commits it to the user's GitHub repo (Contents API).
 import { systemPrompt, outputSchema } from './prompt.js';
-import { fmt, CATS, ALIAS_CATS, diaryPath, entryNo, indexPath, dayOfWeek, parseKnown, parseAliases, withAliases, knownSlug, parseSpendCats, imageFile, money } from './format.js';
+import { fmt, CATS, ALIAS_CATS, diaryPath, entryNo, indexPath, dayOfWeek, parseKnown, parseAliases, withAliases, knownSlug, addPending, prunePending, withPending, parseSpendCats, imageFile, money } from './format.js';
 import { joinSegments, rebase } from './voice.js';
 import { pickLang, tr, locale } from './i18n.js';
 import { exifDate, suggestDate } from './exif.js';
@@ -12,7 +12,7 @@ const load = () => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } 
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(S)); } catch {} };
 // First run in an English browser defaults to the Kit (English) format; saved settings always win.
 const FIRST_FORMAT = localStorage.getItem(LS) === null && pickLang('auto', navigator.languages || [navigator.language]) === 'en' ? 'kit' : 'ai-diary';
-const S = Object.assign({ key: '', model: 'claude-opus-5-5', repo: '', branch: 'main', gh: '', rules: '', format: FIRST_FORMAT, lang: 'auto', spendCats: null, known: null, knownAt: 0, days: {} }, load());
+const S = Object.assign({ key: '', model: 'claude-opus-5-5', repo: '', branch: 'main', gh: '', rules: '', format: FIRST_FORMAT, lang: 'auto', spendCats: null, known: null, knownAt: 0, pending: [], days: {} }, load());
 const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const MOCK = new URLSearchParams(location.search).has('mock');
 
@@ -78,7 +78,7 @@ $('#form-settings').addEventListener('submit', () => {
   const repoChanged = S.repo !== $('#s-repo').value.trim() || S.format !== $('#s-format').value;
   S.format = $('#s-format').value; S.lang = $('#s-lang').value;
   S.key = $('#s-key').value.trim(); S.model = $('#s-model').value; S.repo = $('#s-repo').value.trim(); S.branch = $('#s-branch').value.trim() || 'main'; S.gh = $('#s-gh').value.trim(); S.rules = $('#s-rules').value.trim();
-  if (repoChanged) { S.known = null; S.knownAt = 0; S.spendCats = null; }
+  if (repoChanged) { S.known = null; S.knownAt = 0; S.spendCats = null; S.pending = []; }
   save(); applyLang();
 });
 $('#btn-test-gh').addEventListener('click', async () => {
@@ -103,7 +103,7 @@ async function ghPutFile(path, b64, message, sha) { return gh(`/repos/${S.repo}/
 
 async function loadKnown(force = false) {
   if (!S.repo || !S.gh) return {};
-  if (!force && S.known && Date.now() - S.knownAt < 6 * 3600e3) return S.known;
+  if (!force && S.known && Date.now() - S.knownAt < 6 * 3600e3) return withPending(S.format, S.known, S.pending);
   const known = {};
   await Promise.all(CATS.map(async (c) => {
     try { const f = await ghGetFile(indexPath(S.format, c)); known[c] = parseKnown(S.format, f?.text); } catch { known[c] = []; }
@@ -116,8 +116,8 @@ async function loadKnown(force = false) {
     }));
   }
   if (S.format === 'kit') { try { S.spendCats = parseSpendCats((await ghGetFile(indexPath('kit', 'finance')))?.text); } catch { S.spendCats = null; } }
-  S.known = known; S.knownAt = Date.now(); save();
-  return known;
+  S.pending = prunePending(S.pending, known); S.known = known; S.knownAt = Date.now(); save();
+  return withPending(S.format, known, S.pending);
 }
 
 // ---------- images ----------
@@ -335,6 +335,7 @@ $('#btn-commit').addEventListener('click', async () => {
     const cur = await ghGetFile(draft.path); // re-read sha in case it changed
     if (cur && !fmt(draft.format).merge) throw new Error(t('exists', { path: draft.path }));
     const r = await ghPutFile(draft.path, utf8b64(md), `${draft.format === 'kit' ? 'raw' : 'diary'}: ${draft.date}`, cur?.sha);
+    S.pending = addPending(S.pending, draft.meta?.entities, draft.date); // markDone saves
     markDone(t('committed', { repo: S.repo, path: draft.path, sha: r.commit.sha.slice(0, 7) }));
   } catch (e) { if (offline()) hold('commit'); else st.textContent = t('failed', { e: e.message }); btn.disabled = false; }
 });

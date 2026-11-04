@@ -26,6 +26,27 @@ export const parseAliases = (text) => { const m = String(text || '').match(/^-\s
 // 'slug (one line)' + ['Mom', 'Ellen'] → 'slug (one line; also called: Mom, Ellen)'
 export const withAliases = (entry, aliases) => (!aliases?.length ? entry : /\)$/.test(entry) ? `${entry.slice(0, -1)}; also called: ${aliases.join(', ')})` : `${entry} (also called: ${aliases.join(', ')})`);
 export const knownSlug = (entry) => String(entry).split(' (')[0];
+// Names written in committed entries whose pages don't exist yet (the ingest writes pages later). Kept on the device so the
+// next entry reuses the same slug instead of inventing another; dropped once the index has the slug, or after 14 days.
+export const PENDING_DAYS = 14;
+export function addPending(pending, entities, date, now = Date.now()) {
+  const out = (pending || []).slice();
+  for (const e of entities || []) {
+    if (!e?.isNew || !CATS.includes(e.category) || !e.name || out.some((p) => p.category === e.category && p.name === e.name)) continue;
+    out.push({ category: e.category, name: String(e.name), date, at: now });
+  }
+  return out;
+}
+export const prunePending = (pending, known, now = Date.now()) => (pending || []).filter((p) => now - p.at < PENDING_DAYS * 864e5 && !(known?.[p.category] || []).some((k) => knownSlug(k) === p.name));
+export function withPending(f, known, pending) {
+  const out = Object.fromEntries(Object.entries(known || {}).map(([c, v]) => [c, v.slice()]));
+  for (const p of pending || []) {
+    const v = (out[p.category] ||= []);
+    if (v.some((k) => knownSlug(k) === p.name)) continue;
+    v.push(f === 'kit' ? `${p.name} (new on ${p.date}; page not written yet)` : p.name);
+  }
+  return out;
+}
 // kit: spending categories from wiki/finance/index.md (- [[spend-dining]] — …)
 export const parseSpendCats = (text) => [...(text || '').matchAll(/^\s*-\s*\[\[spend-([a-z0-9-]+)\]\]/gm)].map((m) => m[1]);
 
