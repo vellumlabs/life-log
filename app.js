@@ -70,9 +70,28 @@ function clearDraft() { clearTimeout(persistTimer); idb('readwrite', (st) => st.
 // ---------- settings ----------
 function openSettings() {
   $('#s-key').value = S.key; $('#s-model').value = S.model; $('#s-repo').value = S.repo; $('#s-branch').value = S.branch; $('#s-gh').value = S.gh; $('#s-rules').value = S.rules; $('#s-format').value = S.format; $('#s-lang').value = S.lang;
-  $('#settings-status').textContent = '';
+  $('#settings-status').textContent = ''; $('#known-status').textContent = knownSummary();
   $('#dlg-settings').showModal();
 }
+// The 6-hour cache hides pages (and their "Also called:" names) that /life-ingest wrote on the computer in the meantime.
+function knownSummary() {
+  if (!S.repo || !S.gh) return t('knownNeedGh');
+  if (!S.known) return t('knownNone');
+  const all = CATS.flatMap((c) => S.known[c] || []);
+  const when = new Date(S.knownAt).toLocaleString(locale(L), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return t('knownAt', { n: all.length, a: all.filter((e) => /also called:/.test(e)).length, p: (S.pending || []).length, when });
+}
+$('#btn-reload-known').addEventListener('click', async () => {
+  const st = $('#known-status'); const btn = $('#btn-reload-known');
+  if (S.repo !== $('#s-repo').value.trim() || S.format !== $('#s-format').value || S.gh !== $('#s-gh').value.trim()) { st.textContent = t('knownSaveFirst'); return; }
+  if (!S.repo || !S.gh) { st.textContent = t('knownNeedGh'); return; }
+  if (offline()) { st.textContent = t('knownOffline'); return; }
+  st.textContent = t('checking'); btn.disabled = true;
+  try {
+    if (!(await gh(`/repos/${S.repo}`))) throw new Error('404 repository not found'); // loadKnown treats a bad token as "no names"; surface it here
+    await loadKnown(true); st.textContent = knownSummary();
+  } catch (e) { st.textContent = t('failed', { e: e.message }); } finally { btn.disabled = false; }
+});
 $('#btn-settings').addEventListener('click', openSettings);
 $('#form-settings').addEventListener('submit', () => {
   const repoChanged = S.repo !== $('#s-repo').value.trim() || S.format !== $('#s-format').value;

@@ -38,7 +38,7 @@
 | 形式 | 日記 | 既知の名前を読む場所 | 言語・通貨 | 同じ日の 2 回目 | 統計の更新 |
 |---|---|---|---|---|---|
 | **ai-diary 型**（既定） | `diary/YYYY/YYYY-MM-DD.md` | `stats/*/index.md` | 日本語・円 | 統合して書き直す | `skills/diary-ingest` |
-| **LLM Wiki Kit Pro の life log** | `raw/diary/YYYY/YYYY-MM-DD.md` | `wiki/*/index.md`（slug と一行説明）と人物・店・場所・活動の各ページの `Also called:`（6 時間ごとに読み直し）、支出カテゴリは `wiki/finance/index.md` | 英語・ドル | `-2.md` を新規作成（raw は不変） | `skills/life-ingest` |
+| **LLM Wiki Kit Pro の life log** | `raw/diary/YYYY/YYYY-MM-DD.md` | `wiki/*/index.md`（slug と一行説明）と人物・店・場所・活動の各ページの `Also called:`（6 時間ごとに読み直し。PC で取り込んだ直後は ⚙ →「既知の名前を読み直す」）、支出カテゴリは `wiki/finance/index.md` | 英語・ドル | `-2.md` を新規作成（raw は不変） | `skills/life-ingest` |
 
 Kit 形式は [LLM Wiki Kit](https://github.com/vellumlabs/llm-wiki-kit) Pro 収録の life log wiki（`schema/life-log-workflow.md` の 1 日分の書式）に合わせています。レシート画像は `raw/receipts/images/`、写真は `raw/diary/YYYY/images/` に置き、ファイル名は ASCII の kebab-case です。日記の `Receipt:` 行は Kit の書式どおり転記ファイル `raw/receipts/<同名>.md` を指し、取り込み時に Claude Code が画像から書き起こします（取り込み前は `life-check.py` が「receipt missing」と出します）。アプリは `raw/` だけを書き、`wiki/` の更新はリポジトリ側の Claude Code が `skills/life-ingest/SKILL.md` で行います（`wiki/log.md` に `[day]` 行の無い日記を取り込みます）。2026-10-24 に Kit の完成 wiki の複製で、Claude Code がスキルだけを読んで 1 日分（レシートの書き起こし・新しい人物・15 ページ更新）を約 1.5 分で取り込み、`life-check.py`・`lint.py` とも 0 件になることを確かめました。
 
