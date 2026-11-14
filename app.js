@@ -4,7 +4,7 @@ import { systemPrompt, outputSchema } from './prompt.js';
 import { fmt, CATS, ALIAS_CATS, diaryPath, entryNo, indexPath, dayOfWeek, parseKnown, parseAliases, withAliases, knownSlug, addPending, prunePending, withPending, parseSpendCats, imageFile, money } from './format.js';
 import { joinSegments, rebase } from './voice.js';
 import { pickLang, tr, locale } from './i18n.js';
-import { exifDate, suggestDate } from './exif.js';
+import { fileDate, suggestDate } from './exif.js';
 
 const $ = (s) => document.querySelector(s);
 const LS = 'life-log:v1';
@@ -143,8 +143,8 @@ async function loadKnown(force = false) {
 function addFiles(files) {
   for (const f of files) {
     const img = new Image(); const url = URL.createObjectURL(f);
-    // EXIF is read from the original file (the canvas copy below has none). 128 KB covers APP1 in camera JPEGs.
-    const taken = f.slice(0, 131072).arrayBuffer().then(exifDate).catch(() => null);
+    // EXIF is read from the original file (the canvas copy below has none): JPEG APP1, or the HEIC Exif item.
+    const taken = fileDate(f).catch(() => null);
     img.onload = async () => {
       const max = 1600, sc = Math.min(1, max / Math.max(img.width, img.height));
       const cv = document.createElement('canvas'); cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
@@ -153,6 +153,8 @@ function addFiles(files) {
       images.push({ name: f.name, dataUrl, b64: dataUrl.split(',')[1], mime: 'image/jpeg', w: cv.width, h: cv.height, taken: await taken });
       URL.revokeObjectURL(url); renderThumbs(); persist();
     };
+    // HEIC opens in Safari only; elsewhere the photo would vanish without a word.
+    img.onerror = () => { URL.revokeObjectURL(url); $('#compose-status').textContent = t('photoUnreadable', { name: f.name }); };
     img.src = url;
   }
 }
